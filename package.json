@@ -1,0 +1,18 @@
+{
+  "name": "witherbloom-cycle",
+  "version": "0.1.1",
+  "description": "Echoes: The Witherbloom Cycle — pixel ARPG (static ES modules, esbuild bundle).",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --format=esm --outfile=dist/game.js",
+    "dev": "echo 'Dev mode: open index.html via a static server (no build needed — src/main.js is loaded directly as an ES module).'",
+    "test": "node test/smoke.mjs && node test/state.test.mjs && node test/runtime.mjs && node test/aim.test.mjs && node test/combat.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.8"
+  }
+}

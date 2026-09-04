@@ -1,0 +1,73 @@
+// npc.js — NPC 立绘(重画:grid 内只含 legend 字符与点,无空格/中文)
+import { makeSprite } from './_tools.js';
+import { PAL } from '../palette.js';
+
+// 苔藓村庄的孩子:短发 + 小脸 + 绿衣
+const L_child = {
+  '.': null, 'k': PAL.black,
+  's': '#e0b89a', 'h': '#6a4a2a', 'H': '#4a3a1a',
+  'r': '#a8643a', 'e': '#3a1a1a', 'g': '#6fb872',
+};
+export const CHILD_NPC = makeSprite(`
+....kkkk....
+...khhhhsk..
+...khhhhsk..
+...kessek...
+...kesssk...
+...kssssk...
+..krrrrrrk..
+..krrgrrk...
+..krrrrrk...
+..krrrrk....
+..kr..rk....
+..kr..rk....
+..kk..kk....`, L_child, 4);
+
+// 锻炉城铁匠:壮汉 + 胡须 + 围裙 + 火炉光
+const L_blacksmith = {
+  '.': null, 'k': PAL.black,
+  's': '#a8784a', 'S': '#5a3a1a', 'i': '#2a2a30',
+  'I': '#1a1a20', 'e': '#1a0a0a', 'r': '#a8643a', 'g': '#e0b76a',
+  'l': '#ffc060',
+};
+export const BLACKSMITH_NPC = makeSprite(`
+.....kkkk.....
+....ksssssk...
+...ksssssssk..
+...ksesesssk..
+...ksssssssk..
+...kSSSSSSSk..
+..kiiiiiiiiik.
+..kirrrrrrik..
+..kirrrrrrik..
+..kirggggrlk..
+..kirrrrrrik..
+..kiiiiiiiik..
+..kii..kiik...
+..kii..kiik...
+..kkk..kkk....`, L_blacksmith, 4);
+
+// 倒悬学院学者:尖帽法师 + 长袍 + 持书
+const L_scholar_npc = {
+  '.': null, 'k': PAL.black,
+  'i': '#4a3a6a', 'I': '#2a1a3a', 'w': '#d6c8a4',
+  's': '#e0b89a', 'e': '#1a0a1a', 'g': '#e0b76a',
+};
+export const SCHOLAR_NPC = makeSprite(`
+......kk......
+.....kIIk.....
+....kIIIIk....
+...kIiiiiIk...
+...kIiiiiIk...
+...kIseeeIk...
+...kIssssIk...
+...kIIIIIIk...
+..kIiiiiiiIk..
+..kIiggggiIk..
+..kIiiiiiiIk..
+..kIiiiiiiIk..
+..kIIIIIIIIk..
+..kIik..kIIk..
+..kIIk..kIIk..
+...kkk..kkk...
+.........w....`, L_scholar_npc, 4);
