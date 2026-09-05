@@ -171,6 +171,28 @@ game.setScene('game', { _fromSkillInfo: true });
 frames(2);
 shot('12_pause');
 
+// 13. NPC 对话(带立绘的 Boss 开场白)
+game.setScene('dialog', { id: 'forest_keeper_intro' });
+frames(25);
+shot('13_dialog');
+
+// 14. 章节选择
+game.setScene('chapterSelect');
+frames(10);
+shot('14_chapterSelect');
+
+// 15. 资源转换(暂停菜单同款懒创建;setScene 不懒建会黑屏)
+if (!game.scenes.conversion) game.scenes.conversion = new (await import(url('src/scenes/conversion.js'))).ConversionScene(game);
+game.setScene('conversion');
+frames(5);
+shot('15_conversion');
+
+// 16. 回响树(技能升级)
+if (!game.scenes.skillTree) game.scenes.skillTree = new (await import(url('src/scenes/skillTree.js'))).SkillTreeScene(game);
+game.setScene('skillTree');
+frames(5);
+shot('16_skillTree');
+
 console.log('DONE → /tmp/shots/');
 // BGM 调度器的 setInterval 会让事件循环一直存活,显式退出避免白等超时
 process.exit(0);

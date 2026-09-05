@@ -204,10 +204,10 @@ export class DialogScene {
     ctx.fillRect(40, boxY, W - 80, boxH);
     dialogBox(ctx, 40, boxY, W - 80, boxH);
 
-    // BOSS 立绘(若有):左侧大图 + 描边,淡入
+    // BOSS 立绘(若有):完整收进对话框内部左侧,不留半悬空(艺术图留白大,骑框会像没对齐)
     if (this.speakerPortrait) {
       const pSize = 150;
-      const px = 64, py = boxY - pSize + 26;
+      const px = 56, py = boxY + 15;
       ctx.save();
       ctx.globalAlpha = Math.min(1, this.t * 3);
       // 底框
@@ -228,11 +228,11 @@ export class DialogScene {
       const visible = line.text.substring(0, Math.floor(line.text.length * reveal));
       text(ctx, visible, textX, boxY + 60, 'medium', '#f4ecd0');
     }
-    // 选项
+    // 选项(收在框内:3 条时最后一条不越出底边)
     if (this.choices && this.lineIdx === this.node.lines.length - 1) {
       for (let i = 0; i < this.choices.length; i++) {
         const c = this.choices[i];
-        text(ctx, `[${i + 1}] ${c.text}`, W / 2, boxY + 100 + i * 30, 'medium', '#b78ce0', { align: 'center' });
+        text(ctx, `[${i + 1}] ${c.text}`, W / 2, boxY + 96 + i * 27, 'medium', '#b78ce0', { align: 'center' });
       }
     }
     // 推进提示

@@ -129,13 +129,13 @@ export class SkillTreeScene {
     // 顶部状态: 当前碎片
     text(ctx, `◆ 碎片 ${state.shards}`, W / 2, 170, 'large', '#b78ce0', { align: 'center' });
 
-    // 2 列布局
+    // 2 列布局(网格下沿 = 212 + 3×148 = 656,给底部提示留出空间)
     const cols = 2;
     const cellW = 380, cellH = 130;
     const gapX = 30, gapY = 18;
     const totalW = cols * cellW + (cols - 1) * gapX;
     const startX = (W - totalW) / 2;
-    const startY = 220;
+    const startY = 212;
 
     for (let i = 0; i < NODE_ORDER.length; i++) {
       const key = NODE_ORDER[i];
@@ -147,15 +147,15 @@ export class SkillTreeScene {
       this._renderNode(ctx, x, y, cellW, cellH, key, sk, i === this.menuIndex);
     }
 
-    // 底部提示
+    // 底部提示(网格下沿 656 之下;闪烁提示再下移,两者不叠)
     text(ctx, '↑↓ 选择   ·   ENTER 解锁 / 升级   ·   ESC 返回暂停',
-      W / 2, H - 80, 'small', '#a8945a', { align: 'center' });
+      W / 2, H - 28, 'small', '#a8945a', { align: 'center' });
 
     // 闪烁提示(碎片不足 / 满级)
     if (this.flashLife > 0 && this.flashMsg) {
       const a = Math.min(1, this.flashLife);
       ctx.globalAlpha = a;
-      text(ctx, this.flashMsg, W / 2, H - 50, 'medium', '#e87a3c', {
+      text(ctx, this.flashMsg, W / 2, H - 52, 'medium', '#e87a3c', {
         align: 'center', shadowColor: '#000', shadowOffset: { x: 1, y: 1 },
       });
       ctx.globalAlpha = 1;
@@ -185,9 +185,9 @@ export class SkillTreeScene {
       ctx.globalAlpha = 1;
     }
 
-    // 名称
+    // 名称(large 30px 收进 y14..44,与下方描述留出间隙)
     const textColor = selected ? '#f4ecd0' : (affordable ? '#d6c8a4' : '#7a6f5a');
-    text(ctx, sk.name, x + 80, y + 22, 'large', textColor);
+    text(ctx, sk.name, x + 80, y + 14, 'large', textColor);
 
     // 等级 (右对齐)
     const lvText = `Lv ${sk.level} / 3`;
@@ -212,7 +212,7 @@ export class SkillTreeScene {
       btnText = `升级 Lv${sk.level + 1} · ${cost} 碎片`;
       btnColor = affordable ? '#b78ce0' : '#5a4a6a';
     }
-    text(ctx, btnText, x + 80, y + 100, 'medium', btnColor);
+    text(ctx, btnText, x + 80, y + 98, 'medium', btnColor);
 
     // 选中指示器
     if (selected) {

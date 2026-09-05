@@ -69,11 +69,13 @@ export class ChapterSelectScene {
       text(ctx, `第 ${ch.id} 章`, x + cardW / 2, cardY + 30, 'medium', unlocked ? '#f4ecd0' : '#5a4a6a', { align: 'center' });
       text(ctx, ch.name, x + cardW / 2, cardY + 70, 'large', unlocked ? '#e0b76a' : '#5a4a6a', { align: 'center' });
       text(ctx, ch.subtitle, x + cardW / 2, cardY + 110, 'small', '#8b7f5e', { align: 'center' });
-      // 描述
-      const desc = ch.description;
-      const lines = this._wrap(desc, 12);
-      for (let li = 0; li < lines.length; li++) {
-        text(ctx, lines[li], x + cardW / 2, cardY + 160 + li * 18, 'small', '#a89474', { align: 'center' });
+      // 描述(锁定卡不画:0.7 暗化压不住它,会和"未解锁"叠字)
+      if (unlocked) {
+        const desc = ch.description;
+        const lines = this._wrap(desc, 12);
+        for (let li = 0; li < lines.length; li++) {
+          text(ctx, lines[li], x + cardW / 2, cardY + 160 + li * 18, 'small', '#a89474', { align: 'center' });
+        }
       }
       // 锁定
       if (!unlocked) {

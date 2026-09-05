@@ -596,7 +596,8 @@ export class GameScene {
       text(ctx, owned > 0 ? `已持有 ×${owned}` : (def.cls ? '职业专属' : '本章生效'),
         x + cardW / 2, y + cardH - 30, 'small', owned > 0 ? '#e0b76a' : '#8b7f5e', { align: 'center' });
     }
-    text(ctx, `1/2/3 或 ←→+ENTER 选择 · S 跳过(+${BOON_SKIP_GOLD} 金)`, W / 2, H - 46, 'small', '#a9a07e', { align: 'center' });
+    // 操作提示放在卡片正下方(y520):H-46 会压到底部技能栏的残影上
+    text(ctx, `1/2/3 或 ←→+ENTER 选择 · S 跳过(+${BOON_SKIP_GOLD} 金)`, W / 2, 520, 'small', '#a9a07e', { align: 'center' });
   }
 
   // ===== 刻印守护战:拾取刻印的瞬间,守护者从周身苏醒 =====
@@ -1204,10 +1205,14 @@ export class GameScene {
     this.game.ambient.render(ctx);
     // 浮动文字
     this.game.renderFloatTexts(ctx, cam);
-    // 静谧泉交互提示(画在实体之上,不被角色遮挡)
+    // 静谧泉交互提示(画在实体之上,不被角色遮挡;带底板,压在亮草地也可读)
     if (this._nearbyShrine && !state.flags[this._nearbyShrine.key]) {
       const s = cam.worldToScreen(this._nearbyShrine.x, this._nearbyShrine.y);
-      text(ctx, '按 T 饮泉 · 回复生命', s.x, s.y - 42, 'small', '#bceaf4', { align: 'center' });
+      const pl = '按 T 饮泉 · 回复生命';
+      const pw = textWidth(ctx, pl, 'small');
+      ctx.fillStyle = 'rgba(8,6,14,0.72)';
+      ctx.fillRect(s.x - pw / 2 - 7, s.y - 47, pw + 14, 21);
+      text(ctx, pl, s.x, s.y - 42, 'small', '#bceaf4', { align: 'center' });
     }
     // 对话
     if (this.dialogActive) this.game.scenes.dialog.render(ctx);
@@ -1277,7 +1282,11 @@ export class GameScene {
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
     ctx.strokeText('!', s.x, y); ctx.fillText('!', s.x, y);
     if (this._nearbyNpc === n) {
-      text(ctx, '按 T 交谈', s.x, y + 22, 'small', '#f4ecd0', { align: 'center' });
+      const tp = '按 T 交谈';
+      const tw = textWidth(ctx, tp, 'small');
+      ctx.fillStyle = 'rgba(8,6,14,0.72)';
+      ctx.fillRect(s.x - tw / 2 - 7, y + 17, tw + 14, 21);
+      text(ctx, tp, s.x, y + 22, 'small', '#f4ecd0', { align: 'center' });
     }
   }
 
@@ -1337,10 +1346,16 @@ export class GameScene {
 
     // 右上: 章节名 + 当前房间名
     const ch = CHAPTERS.find(c => c.id === this.chapter);
+    // 右上角柔和渐变背板:章节名/引语/房间名不再被世界精灵穿透
+    const g2 = ctx.createRadialGradient(W, 0, 40, W, 0, 400);
+    g2.addColorStop(0, 'rgba(8,6,14,0.72)');
+    g2.addColorStop(1, 'rgba(8,6,14,0)');
+    ctx.fillStyle = g2;
+    ctx.fillRect(W - 400, 0, 400, 400);
     text(ctx, `第 ${ch.id} 章 · ${ch.name}`, W - 18, 18, 'large', ch.color, { align: 'right' });
-    text(ctx, ch.subtitle, W - 18, 52, 'medium', '#d6c8a4', { align: 'right' });
+    text(ctx, ch.subtitle, W - 18, 54, 'medium', '#d6c8a4', { align: 'right' });
     if (this.currentRoom) {
-      text(ctx, '◆ ' + this.currentRoom.name, W - 18, 70, 'small', '#8b7f5e', { align: 'right' });
+      text(ctx, '◆ ' + this.currentRoom.name, W - 18, 84, 'small', '#8b7f5e', { align: 'right' });
     }
 
     // 任务条
@@ -1437,9 +1452,10 @@ export class GameScene {
     else if (g.comboCount >= 5) color = '#ffdf8a';
     const pulse = g.comboFxT > 0 ? 34 : (g.comboCount >= 12 ? 28 : 24);
     const numStr = `${g.comboCount} 连击`;
-    text(ctx, numStr, W / 2, 34, pulse, color, { align: 'center' });
+    // y14/52:整块收进罗盘黑圈(顶边 y66)上方,脉冲放大也不压圈
+    text(ctx, numStr, W / 2, 14, pulse, color, { align: 'center' });
     // 窗口余量条(细)
-    const barW = 90, bx = W / 2 - barW / 2, by = 66;
+    const barW = 90, bx = W / 2 - barW / 2, by = 52;
     ctx.fillStyle = 'rgba(8,6,14,0.6)';
     ctx.fillRect(bx, by, barW, 3);
     ctx.fillStyle = color;
@@ -1448,7 +1464,7 @@ export class GameScene {
     const mul = comboMultiplier(g.comboCount);
     if (mul > 1) {
       const off = textWidth(ctx, numStr, pulse) / 2 + 12;
-      text(ctx, `伤害 +${Math.round((mul - 1) * 100)}%`, W / 2 + off, 46, 'small', color,
+      text(ctx, `伤害 +${Math.round((mul - 1) * 100)}%`, W / 2 + off, 22, 'small', color,
         { align: 'left', shadowColor: '#000', shadowOffset: { x: 1, y: 1 } });
     }
     ctx.globalAlpha = 1;
@@ -1578,7 +1594,12 @@ export class GameScene {
     ctx.beginPath();
     ctx.moveTo(20, 0); ctx.lineTo(8, 8); ctx.lineTo(8, -8); ctx.fill();
     ctx.restore();
-    text(ctx, `${label} ${Math.round(dist / 32)}m`, cx, cy + 30, 'small', '#d6c8a4', { align: 'center' });
+    // 距离标签加深色底板,裸文字压在世界地面上会显得杂乱
+    const lbl = `${label} ${Math.round(dist / 32)}m`;
+    const lw = textWidth(ctx, lbl, 'small');
+    ctx.fillStyle = 'rgba(8,6,14,0.72)';
+    ctx.fillRect(cx - lw / 2 - 6, cy + 24, lw + 12, 20);
+    text(ctx, lbl, cx, cy + 28, 'small', '#d6c8a4', { align: 'center' });
   }
 
   _renderHelpButton(ctx) {

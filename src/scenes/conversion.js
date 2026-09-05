@@ -117,7 +117,7 @@ export class ConversionScene {
     const totalW = res.length * slotW;
     let rx = (W - totalW) / 2;
     for (const r of res) {
-      if (r.icon) ctx.drawImage(r.icon, rx, resY, 28, 28);
+      if (r.icon) ctx.drawImage(r.icon, rx, resY + 16, 28, 28);
       text(ctx, `${r.label} ${r.n}`, rx + 38, resY + 18, 'large', r.color);
       rx += slotW;
     }
@@ -175,21 +175,16 @@ export class ConversionScene {
       text(ctx, '×2', ix1 + fromIcon.width * 2 + 16, y + h / 2, 'large', '#f4ecd0', { align: 'left' });
     }
 
-    // 箭头 + 目标资源
-    const ax = x + w / 2 + 30;
+    // 箭头 + 目标资源(文字紧跟图标流动排布,不再右对齐压回图标)
+    const tgtLabel0 = conv.to === 'dew' ? '露珠' : conv.to === 'ember' ? '余烬' : '枯叶';
+    const ax = x + w / 2 + 10;
     text(ctx, '→', ax, y + h / 2, 'large', conv.color, { align: 'center' });
     if (toIcon) {
-      ctx.drawImage(toIcon, ax + 30, y + (h - toIcon.height) / 2);
-      text(ctx, '×1', ax + 30 + toIcon.width + 6, y + h / 2, 'large', conv.color);
+      ctx.drawImage(toIcon, ax + 34, y + (h - toIcon.height) / 2);
+      text(ctx, `1 ${tgtLabel0}`, ax + 34 + toIcon.width + 10, y + h / 2, 'medium', conv.color);
     }
 
     ctx.globalAlpha = 1;
-
-    // 左侧标签 "2 露珠 → 1 余烬"
-    const srcLabel = conv.from === 'dew' ? '露珠' : conv.from === 'ember' ? '余烬' : '枯叶';
-    const tgtLabel = conv.to === 'dew' ? '露珠' : conv.to === 'ember' ? '余烬' : '枯叶';
-    text(ctx, `2 ${srcLabel} → 1 ${tgtLabel}`, x + w - 22, y + h / 2 + 6, 'medium',
-      canConvert ? (selected ? '#f4ecd0' : '#d6c8a4') : '#7a6f5a', { align: 'right' });
 
     // 选中指示器
     if (selected) {
