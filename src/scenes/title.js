@@ -21,7 +21,7 @@ export class TitleScene {
     this.t = 0;
     this.menuIndex = 0;
     this.game.audio.init();
-    this.game.audio.startMusic(90);
+    this.game.audio.startMusic(0, 'title');
     // 专属标题插画(mmx 生成);失败则退回纯色渐变
     this.bg = this.game.assets.cutscenes.title || null;
   }
@@ -88,15 +88,21 @@ export class TitleScene {
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, W, H);
     }
-    // 紫色光晕
+    // 紫色光晕(离屏预渲染一次, 每帧仅缩放绘制, 避免每帧建 radialGradient)
     const t = this.t;
     const glowR = 200 + Math.sin(t * 0.6) * 30;
     const cx = W * 0.5, cy = H * 0.32;
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-    grad.addColorStop(0, 'rgba(183, 140, 224, 0.4)');
-    grad.addColorStop(1, 'rgba(183, 140, 224, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
+    if (!TitleScene._glowSprite) {
+      const g = document.createElement('canvas');
+      g.width = 256; g.height = 256;
+      const gx = g.getContext('2d');
+      const rg = gx.createRadialGradient(128, 128, 0, 128, 128, 128);
+      rg.addColorStop(0, 'rgba(183, 140, 224, 0.4)');
+      rg.addColorStop(1, 'rgba(183, 140, 224, 0)');
+      gx.fillStyle = rg; gx.fillRect(0, 0, 256, 256);
+      TitleScene._glowSprite = g;
+    }
+    ctx.drawImage(TitleScene._glowSprite, cx - glowR, cy - glowR, glowR * 2, glowR * 2);
 
     // 标题
     const titleAlpha = Math.min(1, this.t * 0.5);

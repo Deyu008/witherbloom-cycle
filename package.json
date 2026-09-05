@@ -7,7 +7,9 @@
   "scripts": {
     "build": "esbuild src/main.js --bundle --format=esm --outfile=dist/game.js",
     "dev": "echo 'Dev mode: open index.html via a static server (no build needed — src/main.js is loaded directly as an ES module).'",
-    "test": "node test/smoke.mjs && node test/state.test.mjs && node test/runtime.mjs && node test/aim.test.mjs && node test/combat.test.mjs"
+    "test": "node test/smoke.mjs && node test/state.test.mjs && node test/runtime.mjs && node test/aim.test.mjs && node test/combat.test.mjs",
+    "serve": "python3 -m http.server 8000",
+    "build:prod": "esbuild src/main.js --bundle --format=esm --outfile=dist/game.js --minify"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"

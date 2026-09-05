@@ -12,6 +12,9 @@ export class Audio {
     this._musicNodes = [];
     this._voices = {};       // 已解码的台词配音缓存 key → AudioBuffer
     this._voiceFetching = {}; // 防并发重复拉取
+    this._fileBufs = {};     // mmx 生成的 BGM 文件解码缓存 key → AudioBuffer
+    this._fileSrc = null;    // 当前文件音轨源
+    this._loadingFiles = {}; // 防并发重复拉取 BGM
   }
 
   init() {
@@ -278,36 +281,42 @@ export class Audio {
       melody: [330, 0, 392, 440, 0, 392, 330, 294, 330, 0, 440, 0, 392, 330, 294, 0],
       bass:   [165, 0, 0, 147, 0, 0, 131, 0, 165, 0, 0, 147, 0, 0, 196, 0],
       drums: 'soft',
+      chords: [[262,330,392],[220,262,330],[196,247,294],[175,220,262]],
     },
     ch2: {
       tempo: 126,
       melody: [294, 294, 0, 370, 440, 0, 370, 294, 330, 330, 0, 392, 440, 494, 440, 0],
       bass:   [147, 0, 147, 0, 175, 0, 147, 0, 165, 0, 165, 0, 196, 0, 147, 0],
       drums: 'full',
+      chords: [[147,175,220],[165,196,247],[131,165,196],[147,175,220]],
     },
     ch3: {
       tempo: 96,
       melody: [311, 0, 0, 349, 0, 466, 0, 415, 311, 0, 0, 349, 0, 415, 0, 349],
       bass:   [78, 0, 0, 0, 104, 0, 0, 0, 78, 0, 0, 0, 93, 0, 0, 0],
       drums: 'sparse',
+      chords: [[156,186,233],[175,208,262],[139,165,208],[156,186,233]],
     },
     ch4: {
       tempo: 88,
       melody: [262, 0, 0, 0, 311, 0, 349, 0, 330, 0, 0, 262, 0, 0, 247, 0],
       bass:   [65, 0, 0, 0, 0, 0, 78, 0, 65, 0, 0, 0, 0, 0, 62, 0],
       drums: null,
+      chords: [[131,156,196],[117,147,175],[131,156,196],[98,123,147]],
     },
     boss: {
       tempo: 140,
       melody: [220, 0, 262, 220, 294, 0, 262, 0, 220, 233, 0, 262, 311, 294, 262, 0],
       bass:   [110, 110, 0, 110, 0, 104, 0, 98, 110, 110, 0, 110, 0, 117, 0, 123],
       drums: 'full',
+      chords: [[110,131,165],[117,147,175],[98,123,147],[110,131,165]],
     },
     title: {
       tempo: 84,
       melody: [330, 0, 0, 392, 0, 440, 0, 0, 392, 0, 330, 0, 294, 0, 0, 0],
       bass:   [82, 0, 0, 0, 110, 0, 0, 0, 98, 0, 0, 0, 123, 0, 0, 0],
       drums: null,
+      chords: [[131,165,196],[110,131,165],[98,123,147],[123,147,186]],
     },
   };
 
@@ -324,6 +333,9 @@ export class Audio {
     if (this._currentTrack === trackKey && this._musicInterval) return; // 同曲不重启
     this._currentTrack = trackKey;
     this.stopMusic();
+    // 优先播放 mmx 生成的文件音轨;未解码则先播程序化旋律并异步加载,加载完平滑切换
+    if (trackKey && this._tryFileTrack(trackKey)) return;
+    if (trackKey) this._loadFileTrack(trackKey);
     const melody = track.melody;
     const bass = track.bass;
     const drums = track.drums || null;
@@ -347,6 +359,11 @@ export class Audio {
           this._bgmNoteAt(b, nextNoteTime, beat * 1.8, 'triangle', 0.12);
           // 小节起点的持续低音衬底(sub sine),把"蜂鸣"托成"和声"
           if (i % 8 === 0) this._bgmNoteAt(b / 2, nextNoteTime, beat * 7.5, 'sine', 0.09);
+        }
+        // 和声垫层:每小节一个软三和弦(sine 低增益),增加丰满度与调性支撑
+        if (track.chords && i % 8 === 0) {
+          const ch = track.chords[Math.floor(step / 8) % track.chords.length];
+          for (const f of ch) this._bgmNoteAt(f, nextNoteTime, beat * 7.2, 'sine', 0.042);
         }
         if (drums) this._drumsAt(drums, i, nextNoteTime);
         nextNoteTime += beat;
@@ -426,7 +443,45 @@ export class Audio {
       clearInterval(this._musicInterval);
       this._musicInterval = null;
     }
+    if (this._fileSrc) {
+      try { this._fileSrc.stop(); } catch (e) {}
+      try { this._fileSrc.disconnect(); } catch (e) {}
+      this._fileSrc = null;
+    }
     this._currentTrack = null;
+  }
+
+  // ===== mmx 文件音轨 =====
+  _tryFileTrack(key) {
+    const buf = this._fileBufs[key];
+    if (!buf || !this.ctx) return false;
+    try {
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(this.musicGain);
+      src.start(0);
+      this._fileSrc = src;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  _loadFileTrack(key) {
+    if (this._fileBufs[key] || this._loadingFiles[key]) return;
+    this._loadingFiles[key] = true;
+    fetch('assets/audio/' + key + '.mp3')
+      .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+      .then(ab => this.ctx.decodeAudioData(ab))
+      .then(buf => {
+        this._fileBufs[key] = buf;
+        // 若当前仍在播该曲的程序化版本,切换到文件音轨
+        if (this._currentTrack === key && !this._fileSrc) {
+          if (this._musicInterval) { clearInterval(this._musicInterval); this._musicInterval = null; }
+          this._tryFileTrack(key);
+        }
+      })
+      .catch(() => { /* 无文件则保持程序化旋律 */ })
+      .finally(() => { this._loadingFiles[key] = false; });
   }
 
   setMute(m) {

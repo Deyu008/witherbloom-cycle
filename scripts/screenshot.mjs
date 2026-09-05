@@ -172,3 +172,5 @@ frames(2);
 shot('12_pause');
 
 console.log('DONE → /tmp/shots/');
+// BGM 调度器的 setInterval 会让事件循环一直存活,显式退出避免白等超时
+process.exit(0);

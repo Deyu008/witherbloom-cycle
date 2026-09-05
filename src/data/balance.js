@@ -13,7 +13,7 @@ export const PLAYER_BASE = {
   speed: 150,
   attackDamage: 14,
   attackRange: 84,
-  mpRegen: 1.6, // 被动法力回复/秒(player.js 乘 CLASS_MODS.mpRegenMul)
+  mpRegen: 1.9, // 被动法力回复/秒(player.js 乘 CLASS_MODS.mpRegenMul)
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -56,16 +56,16 @@ export const CLASS_MODS = {
 // charge: true 的敌人会在中距离蓄力后向玩家冲锋(可闪避),丰富走位博弈
 export const ENEMY_DATA = {
   forest_spirit: { hp: 26, dmg: 7, speed: 64, ai: 'melee', xp: 6, gold: 3, size: 30, color: '#6fb872' },
-  moss_lurker:   { hp: 55, dmg: 12, speed: 38, ai: 'melee', xp: 12, gold: 5, size: 38, color: '#5a8a4a', charge: true },
+  moss_lurker:   { hp: 55, dmg: 10, speed: 38, ai: 'melee', xp: 12, gold: 5, size: 38, color: '#5a8a4a', charge: true },
   vine_wraith:   { hp: 32, dmg: 10, speed: 70, ai: 'ranged', xp: 10, gold: 4, size: 34, range: 220, color: '#7a5a8a' },
   ember_imp:     { hp: 36, dmg: 14, speed: 96, ai: 'melee', xp: 13, gold: 6, size: 30, color: '#e87a3c' },
   forge_knight:  { hp: 90, dmg: 18, speed: 52, ai: 'melee', xp: 20, gold: 9, size: 40, color: '#5a5a66' },
   ash_phantom:   { hp: 30, dmg: 16, speed: 78, ai: 'ranged', xp: 15, gold: 6, size: 34, range: 240, color: '#7a4a4a' },
   grave_warden:  { hp: 66, dmg: 18, speed: 56, ai: 'melee', xp: 18, gold: 8, size: 38, color: '#5a5a70' },
   ink_scholar:   { hp: 38, dmg: 16, speed: 66, ai: 'ranged', xp: 16, gold: 7, size: 34, range: 230, color: '#4a3a6a' },
-  frost_lurker:  { hp: 54, dmg: 20, speed: 82, ai: 'melee', xp: 22, gold: 9, size: 34, color: '#8aa9c4', charge: true },
-  mirror_knight: { hp: 82, dmg: 22, speed: 60, ai: 'melee', xp: 24, gold: 11, size: 40, color: '#a8b8d0' },
-  void_seeker:   { hp: 48, dmg: 24, speed: 88, ai: 'ranged', xp: 26, gold: 11, size: 36, range: 250, color: '#3a2a4a' },
+  frost_lurker:  { hp: 54, dmg: 18, speed: 82, ai: 'melee', xp: 22, gold: 9, size: 34, color: '#8aa9c4', charge: true },
+  mirror_knight: { hp: 82, dmg: 20, speed: 60, ai: 'melee', xp: 24, gold: 11, size: 40, color: '#a8b8d0' },
+  void_seeker:   { hp: 48, dmg: 21, speed: 88, ai: 'ranged', xp: 26, gold: 11, size: 36, range: 250, color: '#3a2a4a' },
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -145,17 +145,17 @@ export const COMBAT = {
   critComboBonus: 0.10, // 连击 ≥5 后额外 +10% 暴击率(capped)
 
   // 连击(combo):命中累计,受击清零;高连击给伤害/蓝量奖励
-  comboWindow: 3.0,     // 距上次命中最长间隔(秒),超时清零
+  comboWindow: 3.2,     // 距上次命中最长间隔(秒),超时清零
   comboDmgSteps: [      // [达到连击数, 伤害乘子]
     [5, 1.10],
     [12, 1.20],
     [22, 1.32],
   ],
-  comboMpPerHit: 2,     // 每次命中额外回蓝(鼓励贴身输出循环技能)
+  comboMpPerHit: 3,     // 每次命中额外回蓝(鼓励贴身输出循环技能)
 
   // 完美闪避:冲刺无敌帧内"本应命中"触发 → 子弹时间 + 回蓝奖励
   perfectDodgeGrace: 0.12, // 冲刺结束后仍算"完美窗口"的宽限(秒)
-  perfectDodgeMp: 18,
+  perfectDodgeMp: 20,
   perfectDodgeSlowmo: { scale: 0.32, time: 0.5 }, // 时间缩放与持续
 
   // 精英敌人
@@ -166,7 +166,7 @@ export const COMBAT = {
   eliteRewardMul: 3,
 
   // BOSS 接触伤害(防止贴身白嫖;有 0.8s 玩家 i-frame 兜底)
-  bossContactDmgMul: 0.45,
+  bossContactDmgMul: 0.40,
   bossContactIframe: 0.8,
   bossEnrageAt: 0.25,       // HP 低于此占比进入狂暴
   bossEnrageSpeedMul: 1.45,

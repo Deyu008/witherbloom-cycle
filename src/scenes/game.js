@@ -1,5 +1,6 @@
 // scenes/game.js — 主游戏场景(俯视角)
 import { text, textWidth } from '../pixelfont.js';
+import { panel as uiPanel, bar as uiBar, slot as uiSlot, bossFrame as uiBossFrame, minimapFrame as uiMinimap } from '../uiKit.js';
 import { ECHOES } from '../data/echoes.js';
 import { World, Loot } from '../world.js';
 import { Player } from '../player.js';
@@ -1284,28 +1285,16 @@ export class GameScene {
     const W = this.game.canvas.width, H = this.game.canvas.height;
     // 左上: HP/MP/资源(整体下移,标签不再贴屏幕顶边)
     const barW = 280, barH = 14, barX = 18, barY = 32;
-    ctx.fillStyle = 'rgba(8,6,14,0.7)';
-    ctx.fillRect(barX - 6, barY - 18, barW + 12, 92);
+    uiPanel(ctx, barX - 6, barY - 18, barW + 12, 92, { accent: 'rgba(183,140,224,0.35)' });
     text(ctx, '生命', barX, barY - 16, 'small', '#d65858');
-    ctx.fillStyle = '#3a1a1a'; ctx.fillRect(barX, barY, barW, barH);
-    ctx.fillStyle = '#d65858'; ctx.fillRect(barX, barY, barW * (this.player.hp / this.player.maxHp), barH);
+    uiBar(ctx, barX, barY, barW, barH, this.player.hp / this.player.maxHp, '#d65858', { ticks: 4 });
     text(ctx, `${Math.ceil(this.player.hp)}/${this.player.maxHp}`, barX + barW, barY, 'small', '#fff', { align: 'right' });
     text(ctx, '法力', barX, barY + barH + 4, 'small', '#6c8ee0');
-    ctx.fillStyle = '#1a2a3a'; ctx.fillRect(barX, barY + barH + 16, barW, barH);
-    ctx.fillStyle = '#6c8ee0'; ctx.fillRect(barX, barY + barH + 16, barW * (state.mp / state.maxMp), barH);
+    uiBar(ctx, barX, barY + barH + 16, barW, barH, state.mp / state.maxMp, '#6c8ee0', { ticks: 4 });
     text(ctx, `${Math.ceil(state.mp)}/${state.maxMp}`, barX + barW, barY + barH + 16, 'small', '#fff', { align: 'right' });
     // 经验条(细金条,升级进度一目了然)
-    // mmx 生成的 HP/MP 边框装饰 (低透明度叠加,加载失败则跳过)
-    const barFrame = this.game.assets?.ui?.bar_frames;
-    if (barFrame) {
-      ctx.save();
-      ctx.globalAlpha = 0.6;
-      ctx.drawImage(barFrame, barX - 6, barY - 18, barW + 12, 92);
-      ctx.restore();
-    }
     const xpY = barY + barH * 2 + 20;
-    ctx.fillStyle = 'rgba(8,6,14,0.7)'; ctx.fillRect(barX, xpY, barW, 6);
-    ctx.fillStyle = '#d8b04a'; ctx.fillRect(barX, xpY, barW * Math.min(1, state.xp / state.xpToNext), 6);
+    uiBar(ctx, barX, xpY, barW, 6, Math.min(1, state.xp / state.xpToNext), '#d8b04a');
     // 自动存档轻提示(淡出;时长在 update 里递减)
     if (this._saveToast > 0) {
       ctx.globalAlpha = Math.min(1, this._saveToast);
@@ -1391,14 +1380,7 @@ export class GameScene {
     const totalW = slots.length * size + (slots.length - 1) * gap;
     const x0 = (W - totalW) / 2;
     const y0 = H - 26 - size - 8; // 控制条上方
-    // mmx 生成的技能栏底框 (绘制在技能格后方,加载失败则跳过)
-    const skillFrame = this.game.assets?.ui?.skill_slots;
-    if (skillFrame) {
-      ctx.save();
-      ctx.globalAlpha = 0.65;
-      ctx.drawImage(skillFrame, x0, y0, totalW, size);
-      ctx.restore();
-    }
+    uiPanel(ctx, x0 - 6, y0 - 6, totalW + 12, size + 12, { accent: 'rgba(183,140,224,0.3)', cornerLen: 4 });
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
       const x = x0 + i * (size + gap);
@@ -1410,18 +1392,7 @@ export class GameScene {
       this._skillPrev[s.key] = usable;
       const flash = Math.max(0, this._skillFlash[s.key] || 0);
       // 底框(就绪闪光时描金)
-      ctx.fillStyle = 'rgba(8,6,14,0.78)';
-      ctx.fillRect(x, y0, size, size);
-      if (flash > 0) {
-        ctx.save();
-        ctx.globalAlpha = (flash / 0.45) * 0.35;
-        ctx.fillStyle = '#ffcf4d';
-        ctx.fillRect(x, y0, size, size);
-        ctx.restore();
-      }
-      ctx.strokeStyle = flash > 0 ? '#ffcf4d' : 'rgba(183,140,224,0.45)';
-      ctx.lineWidth = flash > 0 ? 2 : 1;
-      ctx.strokeRect(x + 0.5, y0 + 0.5, size - 1, size - 1);
+      uiSlot(ctx, x, y0, size, { ready: flash > 0, accent: flash > 0 ? '#ffcf4d' : 'rgba(183,140,224,0.45)' });
       // 图标
       const icon = s.icon;
       const noResource = s.mp > 0 && state.mp < s.mp;
@@ -1556,24 +1527,14 @@ export class GameScene {
         ctx.closePath(); ctx.fill();
       }
     }
-    // mmx 生成的小地图边框 (叠加在最上层作为描边,加载失败则跳过)
-    const mapFrame = this.game.assets?.ui?.minimap_frame;
-    if (mapFrame) {
-      ctx.save();
-      ctx.globalAlpha = 0.75;
-      ctx.drawImage(mapFrame, mapX, mapY, mapW, mapH);
-      ctx.restore();
-    }
+    uiMinimap(ctx, mapX, mapY, mapW, mapH);
   }
 
   _renderObjective(ctx) {
     if (!this.currentObjective) return;
     const W = this.game.canvas.width;
     const boxX = 18, boxY = 122, boxW = 300, boxH = 70;
-    ctx.fillStyle = 'rgba(8,6,14,0.78)';
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.strokeStyle = '#e0b76a'; ctx.lineWidth = 2;
-    ctx.strokeRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+    uiPanel(ctx, boxX, boxY, boxW, boxH, { accent: 'rgba(224,183,106,0.6)', fill: 'rgba(8,6,14,0.78)' });
     text(ctx, '◆ 当前目标', boxX + 12, boxY + 6, 'small', '#e0b76a');
     text(ctx, this.currentObjective.title, boxX + 12, boxY + 24, 'medium', '#f4ecd0');
     text(ctx, this.currentObjective.desc, boxX + 12, boxY + 46, 'small', '#c9bd97');
@@ -1634,6 +1595,7 @@ export class GameScene {
   _renderHelp(ctx) {
     const W = this.game.canvas.width, H = this.game.canvas.height;
     ctx.fillStyle = 'rgba(0,0,0,0.88)'; ctx.fillRect(0, 0, W, H);
+    uiPanel(ctx, 40, 30, W - 80, H - 70, { accent: 'rgba(183,140,224,0.4)', fill: 'rgba(12,10,20,0.6)' });
     text(ctx, '帮助 · 操作指南', W / 2, 50, 'title', '#e0b76a', { align: 'center' });
     text(ctx, '核心:WASD 移动 + J 攻击 + SPACE 闪避,就能通关(攻击自动瞄准最近敌人)', W / 2, 110, 'medium', '#a8e8b0', { align: 'center' });
     const col1 = W / 2 - 250, col2 = W / 2 + 30;
@@ -1674,25 +1636,13 @@ export class GameScene {
     const barW = 620, barH = 16, bx = (W - barW) / 2, by = 130;
     const showRelease = this._renderReleasePrompt;
     const extraH = showRelease ? 30 : 0;
-    // mmx 生成的 BOSS 血条边框 (绘制在血条后方,加载失败则跳过)
-    const bossFrame = this.game.assets?.ui?.boss_bar_frame;
-    if (bossFrame) {
-      ctx.save();
-      ctx.globalAlpha = 0.7;
-      ctx.drawImage(bossFrame, bx - 8, by - 26, barW + 16, barH + 46 + extraH);
-      ctx.restore();
-    }
-    ctx.fillStyle = 'rgba(8,6,14,0.8)';
-    ctx.fillRect(bx - 8, by - 26, barW + 16, barH + 46 + extraH);
+    uiBossFrame(ctx, bx - 8, by - 26, barW + 16, barH + 46 + extraH, boss.color);
     ctx.strokeStyle = boss.color; ctx.lineWidth = 1.5;
     ctx.strokeRect(bx - 7, by - 25, barW + 14, barH + 44 + extraH);
     const releasable = boss.releaseAvailable?.();
     text(ctx, releasable ? '〔可释怀〕 ' + boss.data.name : boss.data.name, W / 2, by - 20, 'medium',
       releasable ? '#e0b76a' : boss.color, { align: 'center' });
-    ctx.fillStyle = '#1a0a0a'; ctx.fillRect(bx, by, barW, barH);
-    const g = ctx.createLinearGradient(bx, 0, bx + barW, 0);
-    g.addColorStop(0, boss.color); g.addColorStop(1, '#fff');
-    ctx.fillStyle = g; ctx.fillRect(bx, by, barW * (boss.hp / boss.maxHp), barH);
+    uiBar(ctx, bx, by, barW, barH, boss.hp / boss.maxHp, boss.color);
     text(ctx, `〔${boss.data.phases[boss.phaseIdx].name}〕`, W / 2, by + barH + 4, 'small', '#d6c8a4', { align: 'center' });
     // 阶段点:血条下方的一排圆点,标示 BOSS 总阶段与当前所处阶段
     const phases = boss.data.phases;
@@ -1721,12 +1671,7 @@ export class GameScene {
     // 中央面板容器(菜单与背景彻底隔离,不再依赖暗层程度)
     const pw = 560, ph = 96 + this.pauseItems.length * 50 + 56;
     const px0 = (W - pw) / 2, py0 = (H - ph) / 2 - 10;
-    ctx.fillStyle = 'rgba(16,12,28,0.96)';
-    ctx.fillRect(px0, py0, pw, ph);
-    ctx.strokeStyle = 'rgba(183,140,224,0.5)'; ctx.lineWidth = 2;
-    ctx.strokeRect(px0 + 1, py0 + 1, pw - 2, ph - 2);
-    ctx.strokeStyle = 'rgba(224,183,106,0.35)'; ctx.lineWidth = 1;
-    ctx.strokeRect(px0 + 5, py0 + 5, pw - 10, ph - 10);
+    uiPanel(ctx, px0, py0, pw, ph, { accent: 'rgba(183,140,224,0.5)', fill: 'rgba(16,12,28,0.96)' });
     text(ctx, '暂 停', W / 2, py0 + 30, 'title', '#f4ecd0', { align: 'center' });
     const listY = py0 + 96;
     for (let i = 0; i < this.pauseItems.length; i++) {
@@ -1787,8 +1732,7 @@ export class GameScene {
     const sel = list[this.echoIdx];
     if (sel) {
       const dx = 540, dy = 130, dw = W - dx - 60, dh = H - dy - 80;
-      ctx.fillStyle = 'rgba(20,16,30,0.75)'; ctx.fillRect(dx, dy, dw, dh);
-      ctx.strokeStyle = '#3a2a5a'; ctx.lineWidth = 2; ctx.strokeRect(dx + 1, dy + 1, dw - 2, dh - 2);
+      uiPanel(ctx, dx, dy, dw, dh, { accent: '#3a2a5a', fill: 'rgba(20,16,30,0.75)' });
       text(ctx, sel.title, dx + 22, dy + 18, 'large', '#e0b76a');
       const chLabel = ['序章 · 世界观', '第一章 · 春之森', '第二章 · 夏之墟', '第三章 · 秋之墓', '第四章 · 冬之渊'][sel.chapter] || '';
       text(ctx, chLabel, dx + 22, dy + 58, 'small', '#8b7f5e');

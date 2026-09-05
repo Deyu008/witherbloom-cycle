@@ -29,6 +29,7 @@ const DIALOG_BGS = {
 import { text } from '../pixelfont.js';
 import { state } from '../state.js';
 import { DIALOGS } from '../data/dialog.js';
+import { dialogBox } from '../uiKit.js';
 
 export class DialogScene {
   constructor(game) { this.game = game; this.t = 0; this.node = null; this.lineIdx = 0; this.lineT = 0; this.finished = false; this.choices = null; this.callback = null; this.speakerPortrait = null; this.bg = null; }
@@ -201,18 +202,7 @@ export class DialogScene {
     // 内部半透明深色底(保证文字可读)
     ctx.fillStyle = 'rgba(12, 10, 20, 0.95)';
     ctx.fillRect(40, boxY, W - 80, boxH);
-    // mmx 生成的对话框边框(加载失败则回退到程序化描边)
-    const frame = this.game.assets?.ui?.dialog_frame;
-    if (frame) {
-      ctx.save();
-      ctx.globalAlpha = 0.88;
-      ctx.drawImage(frame, 40, boxY, W - 80, boxH);
-      ctx.restore();
-    } else {
-      ctx.strokeStyle = '#3a2a5a';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(41, boxY + 1, W - 82, boxH - 2);
-    }
+    dialogBox(ctx, 40, boxY, W - 80, boxH);
 
     // BOSS 立绘(若有):左侧大图 + 描边,淡入
     if (this.speakerPortrait) {
