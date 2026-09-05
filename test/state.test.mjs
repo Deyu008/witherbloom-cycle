@@ -65,34 +65,41 @@ console.log('\n=== Test 3: applySave({}) 完全 fresh ===');
   check('empty save keeps skills intact (6 keys)', Object.keys(st.state.skills).length === 6);
 }
 
-console.log('\n=== Test 4: persistState writes to localStorage ===');
+console.log('\n=== Test 4: SaveSystem.save 只写槽位 key(不再有无槽位后缀的死 key) ===');
 {
   resetStore();
-  // 先 fresh state,再 mutate,再 persist
+  const SAVE_URL = 'file://' + process.cwd() + '/src/save.js';
+  const { SaveSystem } = await import(SAVE_URL);
   st.applySave({});
   st.state.hp = 77;
-  st.persistState();
-  const saved = lsStore.get('witherbloom_save');
-  check('localStorage has witherbloom_save key', saved !== null && typeof saved === 'string');
-  const parsed = JSON.parse(saved);
+  const sys = new SaveSystem();
+  sys.save(0);
+  const slot0 = lsStore.get('witherbloom_save_0');
+  check('localStorage has witherbloom_save_0 key', slot0 !== null && typeof slot0 === 'string');
+  check('bare witherbloom_save key NOT written', lsStore.get('witherbloom_save') == null);
+  const parsed = JSON.parse(slot0);
   check('saved JSON has hp field === 77', parsed.hp === 77, `got ${parsed.hp}`);
   check('saved JSON has maxHp field === 100', parsed.maxHp === 100, `got ${parsed.maxHp}`);
   check('saved JSON has _timestamp', typeof parsed._timestamp === 'number');
   check('saved JSON has skills object', parsed.skills && Object.keys(parsed.skills).length === 6);
+  check('saved JSON has schemaVersion', parsed.schemaVersion === 1);
 }
 
-console.log('\n=== Test 5: persistState 多次写入刷新 timestamp ===');
+console.log('\n=== Test 5: 重复 save 覆盖同槽位并刷新 timestamp ===');
 {
   resetStore();
+  const SAVE_URL = 'file://' + process.cwd() + '/src/save.js';
+  const { SaveSystem } = await import(SAVE_URL);
   st.applySave({});
+  const sys = new SaveSystem();
   st.state.hp = 11;
-  st.persistState();
-  const first = JSON.parse(lsStore.get('witherbloom_save'));
+  sys.save(0);
+  const first = JSON.parse(lsStore.get('witherbloom_save_0'));
   // 至少等 2ms 确保 timestamp 数值不同
   await new Promise(r => setTimeout(r, 5));
   st.state.hp = 22;
-  st.persistState();
-  const second = JSON.parse(lsStore.get('witherbloom_save'));
+  sys.save(0);
+  const second = JSON.parse(lsStore.get('witherbloom_save_0'));
   check('second persist overwrites hp to 22', second.hp === 22);
   check('second persist has later or equal _timestamp', second._timestamp >= first._timestamp);
 }
@@ -101,7 +108,6 @@ console.log('\n=== Test 6: node:assert 兜底断言(todo 要求 ≥5) ===');
 {
   assert.ok(typeof st.freshState === 'function', 'freshState must be function');
   assert.ok(typeof st.applySave === 'function', 'applySave must be function');
-  assert.ok(typeof st.persistState === 'function', 'persistState must be function');
   assert.ok(typeof st.state === 'object' && st.state !== null, 'state must be object');
   // 直接调 freshState 兜底
   const fresh = st.freshState();

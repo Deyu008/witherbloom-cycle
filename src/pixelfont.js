@@ -53,16 +53,25 @@ export function text(ctx, str, x, y, size = 'medium', color = '#f4ecd0', opts = 
   return textWidth(ctx, str, px, weight);
 }
 
+// measureText 结果缓存:text() 每次调用末尾都会取宽度,HUD 每帧几十次,
+// 而字体解析/测量不便宜;键为 字重|字号|文本,超限整体清空防泄漏
+const _widthCache = new Map();
 export function textWidth(ctx, str, size = 'medium', weight = 'bold') {
   const px = resolveSize(size);
+  const s = String(str);
+  const key = weight + '|' + px + '|' + s;
+  const hit = _widthCache.get(key);
+  if (hit !== undefined) return hit;
   ctx.save();
   ctx.font = `${weight} ${px}px ${FONT_STACK}`;
   let max = 0;
-  for (const line of String(str).split('\n')) {
+  for (const line of s.split('\n')) {
     const w = ctx.measureText(line).width;
     if (w > max) max = w;
   }
   ctx.restore();
+  if (_widthCache.size > 4000) _widthCache.clear();
+  _widthCache.set(key, max);
   return max;
 }
 

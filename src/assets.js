@@ -88,8 +88,10 @@ export class AssetLoader {
   _loadImage(url) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = (e) => reject(e);
+      // 兜底超时:个别资源 stalled 而浏览器迟迟不 onerror 时,不至卡死整个启动流程
+      const timer = setTimeout(() => reject(new Error('load timeout: ' + url)), 12000);
+      img.onload = () => { clearTimeout(timer); resolve(img); };
+      img.onerror = (e) => { clearTimeout(timer); reject(e); };
       img.src = url;
     });
   }

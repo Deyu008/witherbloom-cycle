@@ -330,7 +330,8 @@ export class Audio {
       : { tempo, melody: [330, 392, 440, 392, 330, 294, 330, 392, 440, 494, 440, 392, 330, 294, 247, 294],
           bass: [82, 0, 110, 0, 98, 0, 123, 0, 82, 0, 110, 0, 98, 0, 123, 0] };
     const useTempo = trackKey ? track.tempo : (tempo || track.tempo);
-    if (this._currentTrack === trackKey && this._musicInterval) return; // 同曲不重启
+    // 同曲不重启:程序化走 _musicInterval,文件音轨走 _fileSrc(为 null 时会误判"没在播"导致回菜单 BGM 从头放)
+    if (this._currentTrack === trackKey && (this._musicInterval || this._fileSrc)) return;
     this._currentTrack = trackKey;
     this.stopMusic();
     // 优先播放 mmx 生成的文件音轨;未解码则先播程序化旋律并异步加载,加载完平滑切换

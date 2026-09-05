@@ -12,9 +12,7 @@
     "build:prod": "esbuild src/main.js --bundle --format=esm --outfile=dist/game.js --minify"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.8",
     "esbuild": "^0.24.0"
-  },
-  "dependencies": {
-    "@napi-rs/canvas": "^1.0.8"
   }
 }

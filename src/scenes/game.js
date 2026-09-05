@@ -212,6 +212,7 @@ export class GameScene {
         y: (room.cy + 1) * this.levelData.tile + this.levelData.tile / 2,
       };
       const l = new Loot(c.x, c.y, p.id);
+      l.world = this.world;
       const iconLib = SPRITE_LIB.icons || {};
       const skillLib = SPRITE_LIB.skills || {};
       l.sprite = iconLib[p.sprite] || skillLib[p.sprite] || iconLib.gold;
@@ -237,6 +238,7 @@ export class GameScene {
     this.world.sealPoints.forEach((sp, i) => {
       if (state.flags[`seal_${this.chapter}_${i}`]) return; // 跨存档去重
       const l = new Loot(sp.x, sp.y, `seal_${this.chapter}_${i}`);
+      l.world = this.world;
       const icon = SPRITE_LIB.icons.shard || SPRITE_LIB.icons.gold;
       l.sprite = icon;
       l._sealIdx = i;

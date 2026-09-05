@@ -487,7 +487,9 @@ export class World {
   }
 
   spawnLoot(x, y, type) {
-    this.loot.push(new Loot(x, y, type));
+    const l = new Loot(x, y, type);
+    l.world = this; // 掉落物贴墙反弹用
+    this.loot.push(l);
   }
 
   // ===== 渲染 =====
@@ -854,9 +856,13 @@ export class Loot {
     this.bobT += dt * 3;
     this.life -= dt;
     if (this.life <= 0) this.alive = false;
-    // 简单落地(只下落一点)
+    // 简单落地(只下落一点);遇墙/水体反弹,不穿进不可行走的格子
     if (!this._settled) {
-      this.x += this.vx * dt; this.y += this.vy * dt;
+      const nx = this.x + this.vx * dt, ny = this.y + this.vy * dt;
+      if (this.world?.solidAtPx(nx, this.y)) this.vx *= -0.4;
+      else this.x = nx;
+      if (this.world?.solidAtPx(this.x, ny)) this.vy *= -0.4;
+      else this.y = ny;
       this.vy += 300 * dt; this.vx *= 0.9;
       if (this.vy >= 0 && Math.abs(this.vx) < 2) this._settled = true;
     }

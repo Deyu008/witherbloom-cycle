@@ -301,7 +301,7 @@ export class Player extends Entity {
         const stopScale = game.comboCount >= 12 ? 1.4 : 1;
         const stop = (crit ? 0.085 : 0.04) * stopScale * (e.side === 'enemy' && (e.maxHp ?? 0) > 200 ? 1.6 : 1);
         game.hitstop = Math.max(game.hitstop || 0, Math.min(0.16, stop));
-        if (!crit && hits >= 3 && game.comboCount % 2 === 0) { /* 保持基础震屏节奏 */ }
+        // 非暴击命中不额外震屏:基础节奏交给下面的统一 shake,避免高频连击把画面摇散
         hits++;
       }
     }
@@ -446,7 +446,7 @@ export class Player extends Entity {
       game.hitstop = Math.max(game.hitstop || 0, 0.045);
       game.camera.shake(4, 0.18);
     }
-    return amount;
+    return finalAmt; // 与 Entity/Enemy/Boss 对齐:返回实际生效的伤害
   }
 
   _perfectDodge() {

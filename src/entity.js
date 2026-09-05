@@ -175,12 +175,28 @@ export class Entity {
     if (flash) ctx.globalAlpha = 0.85;
     ctx.drawImage(sprite, dx, dy, this.drawW, this.drawH);
     if (flash) {
-      ctx.globalCompositeOperation = 'source-atop';
-      ctx.fillStyle = '#ffffff';
+      // 主画布 alpha:false 且已被不透明地图填满,直接 source-atop 等于 source-over;
+      // 需在离屏画布上把精灵白化后整体贴回
       ctx.globalAlpha = 0.6;
-      ctx.drawImage(sprite, dx, dy, this.drawW, this.drawH);
-      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(whiteSprite(sprite, this.drawW, this.drawH), dx, dy, this.drawW, this.drawH);
       ctx.globalAlpha = 1;
     }
   }
+}
+
+// 受击闪白用离屏画布(模块级复用,不逐帧新建)
+let _flashCv = null;
+function whiteSprite(sprite, dw, dh) {
+  const w = Math.max(1, Math.ceil(dw)), h = Math.max(1, Math.ceil(dh));
+  if (!_flashCv) _flashCv = document.createElement('canvas');
+  if (_flashCv.width !== w || _flashCv.height !== h) { _flashCv.width = w; _flashCv.height = h; }
+  const c = _flashCv.getContext('2d');
+  c.clearRect(0, 0, w, h);
+  c.imageSmoothingEnabled = false;
+  c.drawImage(sprite, 0, 0, w, h);
+  c.globalCompositeOperation = 'source-atop';
+  c.fillStyle = '#ffffff';
+  c.fillRect(0, 0, w, h);
+  c.globalCompositeOperation = 'source-over';
+  return _flashCv;
 }

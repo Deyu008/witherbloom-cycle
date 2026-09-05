@@ -106,7 +106,6 @@ const st = await import(url('src/state.js'));
 check('state.js imports', typeof st === 'object' && st !== null);
 check('state.freshState is function', typeof st.freshState === 'function');
 check('state.applySave is function',  typeof st.applySave === 'function');
-check('state.persistState is function',typeof st.persistState === 'function');
 check('state.state is object',        typeof st.state === 'object' && st.state !== null);
 
 // 5. sprite.js(薄壳,re-export)

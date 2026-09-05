@@ -1,5 +1,5 @@
 // save.js — 存档/读档
-import { state, persistState } from './state.js';
+import { state } from './state.js';
 
 export class SaveSystem {
   constructor() {
@@ -19,7 +19,6 @@ export class SaveSystem {
 
   save(slot = 0) {
     state.currentSlot = slot;
-    persistState();
     const data = JSON.parse(JSON.stringify(state));
     data._timestamp = Date.now();
     this.slots[slot] = data;
@@ -43,5 +42,9 @@ export class SaveSystem {
   }
 
   hasSave() { return this.slots.some(s => s !== null); }
-  clear() { for (let i = 0; i < 3; i++) { this.slots[i] = null; try { localStorage.removeItem(`witherbloom_save_${i}`); } catch {} } }
+  clear() {
+    for (let i = 0; i < 3; i++) { this.slots[i] = null; try { localStorage.removeItem(`witherbloom_save_${i}`); } catch {} }
+    // 旧版本曾在无槽位后缀的裸 key 下写存档,清理残留
+    try { localStorage.removeItem('witherbloom_save'); } catch {}
+  }
 }

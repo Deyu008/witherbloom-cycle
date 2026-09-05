@@ -1,7 +1,6 @@
 // scenes/ending.js — 结局画面
 import { text } from '../pixelfont.js';
 import { state } from '../state.js';
-import { persistState } from '../state.js';
 
 export class EndingScene {
   constructor(game) { this.game = game; this.t = 0; this.ending = 'shared'; this.lines = []; this.lineIdx = 0; this.lineT = 0; this.bg = null; this.fadeT = 0; }
@@ -80,7 +79,7 @@ export class EndingScene {
     } else if (this.t > 4 && confirm) {
       // 结算阶段:回到标题(输入统一在 update 处理,不在 render 里读)
       this.game.audio.sfxChapter();
-      persistState();
+      this.game.save?.save(state.currentSlot || 0); // 结局写入当前游玩槽位
       this.game.goto('title');
     }
   }

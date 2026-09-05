@@ -62,6 +62,10 @@ export function freshState() {
     playTime: 0,
     // 存档标识
     fromSave: null,
+    // 存档槽位(save() 写入;0 = 自动存档)
+    currentSlot: 0,
+    // 存档结构版本(未来字段迁移用)
+    schemaVersion: 1,
   };
 }
 
@@ -71,20 +75,7 @@ export const state = freshState();
 export function applySave(save) {
   const fresh = freshState();
   Object.assign(state, fresh, save);
+  // 嵌套结构整体替换会让旧档丢掉新增键:以新 schema 为底、存档值覆盖
+  if (save && save.skills) state.skills = Object.assign(makeSkills(), save.skills);
   state.fromSave = null;
-}
-
-// 持久化到 localStorage
-export function persistState() {
-  try {
-    const data = JSON.parse(JSON.stringify(state));
-    data._timestamp = Date.now();
-    localStorage.setItem('witherbloom_save', JSON.stringify(data));
-    // 同步多个 slot
-    for (let i = 1; i <= 3; i++) {
-      if (state.currentSlot === i) {
-        localStorage.setItem(`witherbloom_save_${i}`, JSON.stringify(data));
-      }
-    }
-  } catch (e) { console.warn('存档失败', e); }
 }
