@@ -77,11 +77,12 @@
   </div>
 
   <!--
-    Dev mode  (default): src/main.js is loaded directly as an ES module.
-                       Open index.html via a static server (e.g. `python3 -m http.server`).
-    Prod mode:           `npm run build` produces dist/game.js (esbuild bundle).
-                         Swap the script src to "./dist/game.js" for production.
+    单一外壳:优先加载构建产物 dist/game.js(`npm run build` 生成,单请求,无模块瀑布);
+    产物不存在时自动回退直读 src/main.js(dev 模式,静态服务器打开即可)。
   -->
-  <script type="module" src="src/main.js"></script>
+  <script type="module">
+    try { await import('./dist/game.js'); }
+    catch { await import('./src/main.js'); }
+  </script>
 </body>
 </html>

@@ -193,6 +193,41 @@ game.setScene('skillTree');
 frames(5);
 shot('16_skillTree');
 
+// 17. 游商店面(金币消耗出口)
+game.setScene('shop');
+frames(5);
+shot('17_shop');
+
+// 18. 标题:存档预览行 + 新游戏确认弹窗
+game.setScene('title');
+frames(30);
+game.save.save(0); // 造一个存档让预览行出现
+const title = game.scenes.title;
+title.menuIndex = 0;
+title.confirmNewGame = true;
+frames(3);
+shot('18_title_confirm');
+
+// 19. 游戏内死亡黑幕("回声,正在消散")
+game.setScene('game', { chapter: 1 });
+frames(5);
+const scene2 = game.scenes.game;
+for (let i = 0; i < 240 && scene2.dialogActive; i++) { game.scenes.dialog.finished = true; scene2.update(0.016); }
+for (let i = 0; i < 240 && (game.globalFade > 0.01 || scene2.dialogActive); i++) { game._update(0.016); game._render(); }
+scene2.player.takeDamage(99999, scene2.player.x, scene2.player.y - 10);
+frames(45); // 走到黑幕渐显、文字浮现的相位
+shot('19_death');
+
+// 20. 触屏按钮(T/Q/E/R/F 底排)
+game.setScene('game', { chapter: 1 });
+frames(5);
+const scene3 = game.scenes.game;
+for (let i = 0; i < 240 && (game.globalFade > 0.01 || scene3.dialogActive); i++) { if (scene3.dialogActive) game.scenes.dialog.finished = true; game._update(0.016); game._render(); }
+game.input.touchMode = true;
+frames(3);
+shot('20_touch');
+game.input.touchMode = false;
+
 console.log('DONE → /tmp/shots/');
 // BGM 调度器的 setInterval 会让事件循环一直存活,显式退出避免白等超时
 process.exit(0);

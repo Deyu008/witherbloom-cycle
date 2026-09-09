@@ -24,5 +24,5 @@ for (const f of files) {
   ctx.fillText(f.replace('.png',''), cx, cy + CELL_H - LABEL + 4);
   i++;
 }
-writeFileSync('/root/projects/html-game/assets/imgsprites_preview.png', canvas.toBuffer('image/png'));
+writeFileSync('/root/projects/html-game/docs/imgsprites_preview.png', canvas.toBuffer('image/png'));
 console.log('preview', files.length, 'sprites');

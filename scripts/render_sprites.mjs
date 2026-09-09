@@ -128,5 +128,5 @@ for (const sec of sections) {
   y += maxH + LABEL_H + 16;
 }
 const buf = canvas.toBuffer('image/png');
-writeFileSync('/root/projects/html-game/assets/sprite_preview.png', buf);
+writeFileSync('/root/projects/html-game/docs/sprite_preview.png', buf);
 console.log('Done! ' + buf.length + ' bytes');

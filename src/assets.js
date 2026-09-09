@@ -49,15 +49,9 @@ export class AssetLoader {
       { key: 'hero_forge', url: 'assets/img/char/hero_forge.png' },
       { key: 'hero_weave', url: 'assets/img/char/hero_weave.png' },
     ];
-    // UI 装饰素材(mmx 生成;失败则回退到程序化绘制,不阻塞)
-    const uiList = [
-      { key: 'dialog_frame', url: 'assets/img/ui/dialog_frame.png' },
-      { key: 'bar_frames', url: 'assets/img/ui/bar_frames.png' },
-      { key: 'skill_slots', url: 'assets/img/ui/skill_slots.png' },
-      { key: 'boss_bar_frame', url: 'assets/img/ui/boss_bar_frame.png' },
-      { key: 'minimap_frame', url: 'assets/img/ui/minimap_frame.png' },
-      { key: 'item_icons', url: 'assets/img/items/item_icons.png' },
-    ];
+    // UI 装饰已由 src/uiKit.js 程序化绘制(像素级精准,不拉伸变形),
+    // mmx 贴图框与 item_icons 不再加载;assets.img/ui 下的文件仅作留档。
+    const uiList = [];
     // 角色立绘(mmx 生成透明 PNG;失败则回退程序化精灵,不阻塞)
     const spriteList = [
       'hero_recall','hero_forge','hero_weave',
