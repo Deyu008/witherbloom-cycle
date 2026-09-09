@@ -74,26 +74,30 @@ export const ENEMY_DATA = {
 export const BOSS_DATA = {
   forest_keeper: { name: '守林人 · 艾温', chapter: 1, hp: 300, dmg: 14, color: '#6fb872', size: 96, projColor: '#a8e8b0',
     phases: [
-      { name: '等待', line: '我在等……',           attackRate: 2.2 },
-      { name: '回响', line: '你想起了什么?',       attackRate: 1.8 },
-      { name: '记忆', line: '现在,让我听你说。',   attackRate: 1.4 },
-    ] },
+      { name: '等待', lines: ['我在等……', '你踩疼了新芽。', '千年了,你是第一个肯停下的人。'], attackRate: 2.2 },
+      { name: '回响', lines: ['你想起了什么?', '这片林子记得每一次告别。', '连风,都不肯为我停留。'], attackRate: 1.8 },
+      { name: '记忆', lines: ['现在,让我听你说。', '说吧,这句话我等了太久。', '你的声音,和落叶一样轻。'], attackRate: 1.4 },
+    ],
+    wearyLines: ['它已力竭,放下了刀……', '它的枝叶垂了下来,像在听。', '它不再瞄准你了。'] },
   burning_king:  { name: '焚身王 · 阿撒兹勒', chapter: 2, hp: 450, dmg: 18, color: '#e87a3c', size: 110, projColor: '#ff8040',
     phases: [
-      { name: '哀火', line: '火,会带走一切。',     attackRate: 2.0 },
-      { name: '焚城', line: '哀伤还没有烧尽。',    attackRate: 1.4 },
-    ] },
+      { name: '哀火', lines: ['火,会带走一切。', '灰烬,也比眼泪干净。', '我的城在烧,而我只觉得暖。'], attackRate: 2.0 },
+      { name: '焚城', lines: ['哀伤还没有烧尽。', '我烧掉的不是城,是葬礼。', '再旺一点,就没人需要哭了。'], attackRate: 1.4 },
+    ],
+    wearyLines: ['它已力竭,放下了刀……', '火焰熄成了余温。', '他抱住了自己的灰。'] },
   chronomancer:  { name: '编年者 · 赛弗', chapter: 3, hp: 600, dmg: 22, color: '#8a7ab0', size: 104, projColor: '#b0a0e0',
     phases: [
-      { name: '编录', line: '所有事件,都已被记下。', attackRate: 2.0 },
-      { name: '改写', line: '但有些事,该被改写。',   attackRate: 1.4 },
-    ] },
+      { name: '编录', lines: ['所有事件,都已被记下。', '你的每一步,都在我的书页里。', '我记下万物,唯独漏了自己。'], attackRate: 2.0 },
+      { name: '改写', lines: ['但有些事,该被改写。', '让我,撕掉这几页。', '写下的名字,还会被遗忘吗?'], attackRate: 1.4 },
+    ],
+    wearyLines: ['它已力竭,放下了刀……', '他的笔,停在了空白页。', '时间在他身边,慢了下来。'] },
   forgotten:     { name: '寂渊 · 被遗忘者', chapter: 4, hp: 900, dmg: 28, color: '#b78ce0', size: 120, projColor: '#c8a8ff',
     phases: [
-      { name: '虚无', line: '……你来了。',           attackRate: 2.2 },
-      { name: '悔恨', line: '我曾有过名字。',       attackRate: 1.6 },
-      { name: '回响', line: '现在,让我记住你。',    attackRate: 1.3 },
-    ] },
+      { name: '虚无', lines: ['……你来了。', '有人来了。真的,有人来了。', '你听得见我吗。哪怕,只有你。'], attackRate: 2.2 },
+      { name: '悔恨', lines: ['我曾有过名字。', '七个名字,轮回只念六个。', '被记住的人,不会懂这种冷。'], attackRate: 1.6 },
+      { name: '回响', lines: ['现在,让我记住你。', '把你的名字,刻进我的环。', '这一次,换我把你记下。'], attackRate: 1.3 },
+    ],
+    wearyLines: ['它已力竭,放下了刀……', '它伸出手,又收了回去。', '它在等你说完。'] },
 };
 
 // 第 4 章寂渊回廊的悔恨化身:独立数值表,避免 3 个迷你 BOSS 都继承到 900HP

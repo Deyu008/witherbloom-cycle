@@ -873,10 +873,15 @@ export class Loot {
     if (!spr) return;
     const sx = cam.screenX(this.x);
     const sy = cam.screenY(this.y + Math.sin(this.bobT) * 3);
-    // 光晕
+    // 类型色光晕(与图标同色系;纯白圈在亮色地面上像污渍)
+    const GLOW = {
+      dew: '#8ad0e0', ember: '#e87a3c', leaf: '#a8d860',
+      gold: '#e0b76a', shard: '#b78ce0', mirrorEye: '#8aa9c4',
+    };
+    const glow = this.type.startsWith('seal_') ? '#e0b76a' : (GLOW[this.type] || '#e0b76a');
     ctx.save();
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(sx, sy, this.size, 0, Math.PI * 2);
     ctx.fill();

@@ -3,6 +3,8 @@ import { drawText, text, FONT, textWidth } from '../pixelfont.js';
 import { PAL } from '../palette.js';
 import { state, applySave, freshState } from '../state.js';
 
+const CLASS_NAMES = { recall: '追忆者', forge: '锻体者', weave: '织梦者' };
+
 export class TitleScene {
   constructor(game) {
     this.game = game;
@@ -15,18 +17,28 @@ export class TitleScene {
       { text: '退出', action: () => this.exit() },
     ];
     this.bg = null;
+    this.confirmNewGame = false; // 新游戏二次确认态(有存档时)
   }
 
   enter(opts) {
     this.t = 0;
     this.menuIndex = 0;
+    this.confirmNewGame = false;
     this.game.audio.init();
     this.game.audio.startMusic(0, 'title');
     // 专属标题插画(mmx 生成);失败则退回纯色渐变
     this.bg = this.game.assets.cutscenes.title || null;
   }
 
+  _hasSave() { return !!(this.game.save && this.game.save.hasSave()); }
+
   newGame() {
+    // 有存档先二次确认:clear() 会清掉全部进度,误触不可挽回
+    if (this._hasSave() && !this.confirmNewGame) {
+      this.confirmNewGame = true;
+      this.game.audio.sfxClick();
+      return;
+    }
     this.game.audio.sfxChapter();
     this.game.audio.stopMusic();
     if (this.game.save) this.game.save.clear();
@@ -35,6 +47,7 @@ export class TitleScene {
   }
 
   continueGame() {
+    if (!this._hasSave()) return; // 无存档:菜单项已灰显,双保险
     this.game.audio.sfxChapter();
     this.game.audio.stopMusic();
     const save = this.game.save.getLast();
@@ -53,14 +66,26 @@ export class TitleScene {
   update(dt) {
     this.t += dt;
     const k = this.game.input;
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) {
-      this.menuIndex = (this.menuIndex - 1 + this.menuItems.length) % this.menuItems.length;
-      this.game.audio.sfxHover();
+    if (this.confirmNewGame) {
+      if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
+        this.confirmNewGame = false;
+        this.newGame(); // 已确认,直接执行
+      } else if (k.keysJustPressed.has('Escape')) {
+        this.confirmNewGame = false;
+        this.game.audio.sfxClick();
+      }
+      return; // 确认期间锁菜单导航
     }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) {
-      this.menuIndex = (this.menuIndex + 1) % this.menuItems.length;
-      this.game.audio.sfxHover();
-    }
+    // 导航跳过灰显项(无存档时的"继续游戏")
+    const enabled = (i) => !(this.menuItems[i].text === '继续游戏' && !this._hasSave());
+    const step = (dir) => {
+      for (let s = 1; s <= this.menuItems.length; s++) {
+        const i = (this.menuIndex + dir * s + this.menuItems.length * s) % this.menuItems.length;
+        if (enabled(i)) { this.menuIndex = i; this.game.audio.sfxHover(); return; }
+      }
+    };
+    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) step(-1);
+    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) step(1);
     // 仅键盘确认:鼠标点击不做"任意处确认"——否则误触会直接执行
     // 当前选中项(如"开始新游戏"),有清掉存档的风险。
     if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
@@ -131,9 +156,12 @@ export class TitleScene {
     // 菜单
     const menuY = 420;
     const menuH = 60;
+    const hasSave = this._hasSave();
     for (let i = 0; i < this.menuItems.length; i++) {
       const item = this.menuItems[i];
-      const selected = i === this.menuIndex;
+      // 无存档时"继续游戏"灰显不可选
+      const disabled = item.text === '继续游戏' && !hasSave;
+      const selected = i === this.menuIndex && !disabled;
       const y = menuY + i * menuH;
       // 选中框
       if (selected) {
@@ -143,12 +171,43 @@ export class TitleScene {
         ctx.fillRect(W/2 - 220, y - 8, 8, 8);
         ctx.fillRect(W/2 + 212, y - 8, 8, 8);
       }
-      const c = selected ? '#f4ecd0' : '#a8945a';
-      text(ctx, item.text, W / 2, y, 'large', c, {
+      const c = disabled ? '#4a4356' : (selected ? '#f4ecd0' : '#a8945a');
+      text(ctx, disabled ? '继续游戏(无存档)' : item.text, W / 2, y, 'large', c, {
         align: 'center',
         shadowColor: selected ? '#5a3a8a' : '#3a2a1a',
         shadowOffset: { x: 2, y: 2 },
       });
+    }
+
+    // 存档预览:菜单上方一行,让"继续游戏"不再盲选
+    if (hasSave) {
+      const save = this.game.save.getLast();
+      if (save) {
+        const cls = CLASS_NAMES[save.heroClass] || '回响者';
+        const mins = Math.floor((save.playTime || 0) / 60);
+        const label = `存档:第 ${save.currentChapter || 1} 章 · ${cls} · ${mins} 分钟`;
+        const lw = textWidth(ctx, label, 'small');
+        ctx.fillStyle = 'rgba(8,6,14,0.6)';
+        ctx.fillRect(W / 2 - lw / 2 - 10, menuY - 42, lw + 20, 24);
+        text(ctx, label, W / 2, menuY - 36, 'small', '#d6c8a4', { align: 'center' });
+      }
+    }
+
+    // 新游戏二次确认弹窗
+    if (this.confirmNewGame) {
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(0, 0, W, H);
+      const bw = 520, bh = 180, bx = (W - bw) / 2, by = H / 2 - bh / 2;
+      ctx.fillStyle = 'rgba(16,12,28,0.98)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = '#c14d4d'; ctx.lineWidth = 2;
+      ctx.strokeRect(bx + 1, by + 1, bw - 2, bh - 2);
+      text(ctx, '开始新游戏将清除现有存档', W / 2, by + 34, 'medium', '#e8a0a0', { align: 'center' });
+      text(ctx, '此操作无法撤销', W / 2, by + 66, 'small', '#a8945a', { align: 'center' });
+      const blink = (Math.sin(this.t * 5) + 1) * 0.5;
+      ctx.globalAlpha = 0.6 + blink * 0.4;
+      text(ctx, 'ENTER 确认清除   ·   ESC 取消', W / 2, by + 118, 'medium', '#f4ecd0', { align: 'center' });
+      ctx.globalAlpha = 1;
     }
 
     // 提示

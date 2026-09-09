@@ -13,6 +13,7 @@ import { GameScene } from './scenes/game.js';
 import { DialogScene } from './scenes/dialog.js';
 import { ChapterIntroScene } from './scenes/chapterIntro.js';
 import { EndingScene } from './scenes/ending.js';
+import { ShopScene } from './scenes/shop.js';
 import { PAL } from './palette.js';
 import { state, freshState } from './state.js';
 import { text } from './pixelfont.js';
@@ -75,6 +76,7 @@ export class Game {
     this.scenes.dialog = new DialogScene(this);
     this.scenes.chapterIntro = new ChapterIntroScene(this);
     this.scenes.ending = new EndingScene(this);
+    this.scenes.shop = new ShopScene(this);
 
     onProgress?.(0.95, '准备就绪…');
     // 检查是否有存档

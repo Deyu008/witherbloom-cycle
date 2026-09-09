@@ -72,6 +72,7 @@ export const LEVELS = {
       { id: 'child_a', x: 18, y: 11, sprite: 'child', dialog: 'child_a' },
       { id: 'child_b', x: 22, y: 12, sprite: 'child', dialog: 'child_b' },
       { id: 'elder',   x: 25, y: 11, sprite: 'child', dialog: 'elder' },
+      { id: 'merchant', x: 20, y: 12, sprite: 'scholar', shop: true },
     ],
     pickups: [
       { id: 'lullaby', x: 12, y: 8, sprite: 'echo', label: '旧摇篮曲' },
@@ -98,6 +99,7 @@ export const LEVELS = {
       { id: 'blacksmith',  x: 14, y: 13, sprite: 'blacksmith', dialog: 'blacksmith' },
       { id: 'gladiator',   x: 50, y: 13, sprite: 'blacksmith', dialog: 'gladiator' },
       { id: 'burning_king_daughter', x: 80, y: 12, sprite: 'child', dialog: 'burning_daughter' },
+      { id: 'merchant', x: 15, y: 13, sprite: 'scholar', shop: true },
     ],
     pickups: [
       { id: 'mirrorEye', x: 52, y: 10, sprite: 'shield', label: '镜瞳' },
@@ -123,6 +125,7 @@ export const LEVELS = {
       { id: 'scholar_1', x: 30, y: 13, sprite: 'scholar', dialog: 'scholar_1' },
       { id: 'scholar_2', x: 35, y: 12, sprite: 'scholar', dialog: 'scholar_2' },
       { id: 'gravedigger', x: 14, y: 13, sprite: 'scholar', dialog: 'gravedigger' },
+      { id: 'merchant', x: 15, y: 13, sprite: 'scholar', shop: true },
       // 倒悬学院 · 七位根者的残响(支线):集齐 7 段对话触发「七根者」奖励
       { id: 'root_1', x: 33, y: 9,  sprite: 'scholar', dialog: 'root_1' },
       { id: 'root_2', x: 37, y: 17, sprite: 'scholar', dialog: 'root_2' },
@@ -160,6 +163,7 @@ export const LEVELS = {
     ],
     npcs: [
       { id: 'echo_first', x: 25, y: 14, sprite: 'blacksmith', dialog: 'echo_first' },
+      { id: 'merchant', x: 24, y: 14, sprite: 'scholar', shop: true },
     ],
     bosses: [
       { id: 'forgotten', x: 96, y: 14, sprite: 'forgotten', region: 'throne' },

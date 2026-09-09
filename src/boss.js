@@ -200,7 +200,12 @@ export class Boss extends Entity {
     if (this.releaseAvailable() && !this._wearyShown && !this.isMiniboss) {
       this._wearyShown = true;
       game.camera.shake(4, 0.4);
-      game._banner = { text: '它已力竭,放下了刀……', color: '#e0b76a', life: 3 };
+      // 力竭横幅同样轮换(跨战斗递增,存 flags)
+      const wearyPool = this.data.wearyLines || ['它已力竭,放下了刀……'];
+      const wkey = `weary_bark_${this.data.chapter}`;
+      const wi = (state.flags[wkey] || 0) % wearyPool.length;
+      state.flags[wkey] = wi + 1;
+      game._banner = { text: wearyPool[wi], color: '#e0b76a', life: 3 };
       game.audio.sfxWhisper?.();
       for (let i = 0; i < 12; i++) {
         const a = Math.random() * Math.PI * 2;
@@ -249,9 +254,13 @@ export class Boss extends Entity {
       game.camera.shake(14, 0.6);
       game.spawnLevelUpParticles(this.x, this.y);
       game.showBossPhaseName(this.data.phases[phase].name);
-      // 阶段切换 → 显示该 BOSS 该阶段的台词(非阻塞横幅,延后 0.8s 出现)+ 配音
-      const phaseLine = this.data.phases[phase].line;
-      if (phaseLine && typeof game.showBossLine === 'function') {
+      // 阶段切换 → 台词池轮换(bark:重复挑战同一 Boss 不再复读同一句)
+      const pool = this.data.phases[phase].lines || [];
+      if (pool.length > 0 && typeof game.showBossLine === 'function') {
+        this._barkIdx = this._barkIdx || {};
+        const i = (this._barkIdx[phase] || 0) % pool.length;
+        this._barkIdx[phase] = i + 1;
+        const phaseLine = pool[i];
         game.showBossLine(phaseLine, this.color);
         this._speakLine(game, phaseLine);
       }

@@ -75,6 +75,24 @@ export class DialogScene {
     this.t += dt;
     this.lineT += dt;
     const k = this.game.input;
+    // 触屏轻点:有选项时按命中行选择,否则推进
+    if (k.touchTap) {
+      if (this.choices && this.lineIdx >= this.node.lines.length - 1) {
+        const boxY = this.game.canvas.height - 200;
+        const tap = k.touchTap;
+        for (let i = 0; i < this.choices.length; i++) {
+          const rowY = boxY + 96 + i * 27 + 11; // 与 render 的选项行布局一致(顶部基准+半行高)
+          if (Math.abs(tap.y - rowY) < 18) {
+            this.game.audio.sfxClick();
+            this._choose(i);
+            return;
+          }
+        }
+      }
+      this.game.audio.sfxClick();
+      this._next();
+      return;
+    }
     if (k.keysJustPressed.has('Space') || k.keysJustPressed.has('Enter') || k.mouseJustClicked) {
       this.game.audio.sfxClick();
       this._next();

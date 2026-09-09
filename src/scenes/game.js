@@ -10,7 +10,8 @@ import { state } from '../state.js';
 import { CHAPTERS, LEVELS } from '../data/chapters.js';
 import { SPRITE_LIB } from '../sprite.js';
 import { COMBAT, SEAL_AMBUSH_COUNTS, SEAL_AMBUSH_REWARD, comboMultiplier } from '../data/balance.js';
-import { BOON_POOL, BOON_RARITY_INFO, BOON_SKIP_GOLD, drawBoonChoices } from '../data/boons.js';
+import { BOON_POOL, BOON_RARITY_INFO } from '../data/boons.js';
+import { BoonPicker } from './boonPicker.js';
 import { SIDE_ROOMS } from '../data/zones.js';
 import { SkillTreeScene } from './skillTree.js';
 import { ConversionScene } from './conversion.js';
@@ -50,6 +51,9 @@ export class GameScene {
     if (opts && opts._fromSkillInfo) {
       this._togglePause();
       return;
+    }
+    if (opts && opts._fromShop) {
+      return; // 从旅商店面回来:场景单例未销毁,原位继续
     }
     this.chapter = opts.chapter || state.currentChapter || 1;
     state.currentChapter = this.chapter;
@@ -115,8 +119,7 @@ export class GameScene {
     // 回响祝福:每章重置;队列与当前三选一
     state.boons = [];
     state.boonPity = 0;
-    this._boonQueue = [];
-    this._boonOffer = null;
+    this.boonPicker = new BoonPicker(this.game, this);
     // 增援波 / 连杀 / 爆裂词缀危险区
     this._roomsCleared = 0;
     this._killTimes = [];
@@ -195,7 +198,7 @@ export class GameScene {
         y: (room.cy + jitter(i * 2 + 2)) * this.levelData.tile + this.levelData.tile / 2,
       };
       const sprite = SPRITE_LIB.npc[npc.sprite] || SPRITE_LIB.npc.child;
-      this.npcs.push({ x: c.x, y: c.y, sprite, dialog: npc.dialog, name: npc.id, bob: Math.random() * 6 });
+      this.npcs.push({ x: c.x, y: c.y, sprite, dialog: npc.dialog, name: npc.id, shop: !!npc.shop, bob: Math.random() * 6 });
     }
   }
 
@@ -492,115 +495,12 @@ export class GameScene {
     }
   }
 
-  // ===== 回响祝福三选一 =====
-  _queueBoon(minRarity = 'common') {
-    this._boonQueue.push(minRarity);
-  }
-  _tryOpenBoonOffer() {
-    if (this._boonOffer || this._boonQueue.length === 0) return;
-    if (this.dialogActive || this.paused || this.chapterComplete || this.echoLogOpen || this.helpOpen) return;
-    const minRarity = this._boonQueue.shift();
-    const { rarity, choices } = drawBoonChoices(Math.random, state.boonPity, state.heroClass, state.boons, minRarity);
-    if (choices.length === 0) { // 池子抽干(极端情况):直接折现
-      state.gold += BOON_SKIP_GOLD;
-      return;
-    }
-    this._boonOffer = { rarity, choices, idx: 0, t: 0 };
-    this.game.audio.sfxSecret();
-  }
-  _updateBoonOffer(dt) {
-    const k = this.game.input;
-    const o = this._boonOffer;
-    o.t += dt;
-    const n = o.choices.length;
-    for (let i = 0; i < n; i++) {
-      if (k.keysJustPressed.has(`Digit${i + 1}`)) return this._pickBoon(i);
-    }
-    if (k.keysJustPressed.has('ArrowLeft') || k.keysJustPressed.has('KeyA')) { o.idx = (o.idx - 1 + n) % n; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('ArrowRight') || k.keysJustPressed.has('KeyD')) { o.idx = (o.idx + 1) % n; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) return this._pickBoon(o.idx);
-    if (k.keysJustPressed.has('KeyS') || k.keysJustPressed.has('Escape')) {
-      // 跳过 = +50 金(补偿等价,参考 Hades 跳过换金币)
-      state.gold += BOON_SKIP_GOLD;
-      this._settlePity(o.rarity);
-      this.game.audio.sfxPickup(760);
-      this.game.spawnFloatText(this.player.x, this.player.y - 40, `跳过 · +${BOON_SKIP_GOLD} 金`, '#e0b76a');
-      this._boonOffer = null;
-    }
-  }
-  _pickBoon(i) {
-    const def = this._boonOffer.choices[i];
-    if (!def) return;
-    state.boons.push({ id: def.id, rarity: this._boonOffer.rarity });
-    this._settlePity(this._boonOffer.rarity);
-    // 即刻生效类:上限提升同时回血/回蓝
-    if (def.mods.maxHp) {
-      state.maxHp += def.mods.maxHp;
-      this.player.maxHp = state.maxHp;
-      this.player.heal(def.mods.maxHp);
-    }
-    if (def.mods.maxMp) {
-      state.maxMp += def.mods.maxMp;
-      state.mp = Math.min(state.maxMp, state.mp + def.mods.maxMp);
-    }
-    this.game.audio.sfxChapter();
-    this.game.spawnLevelUpParticles(this.player.x, this.player.y);
-    this.game._banner = { text: `获得祝福 · ${def.name}`, color: BOON_RARITY_INFO[def.rarity].color, life: 2.4 };
-    this.game.spawnFloatText(this.player.x, this.player.y - 52, def.desc, '#f4ecd0', { px: 16, vy: 38, life: 1.6 });
-    this._boonOffer = null;
-  }
-  // 保底结算:普通 → pity 增加;稀有以上 → 清零(STS pity counter)
-  _settlePity(rarity) {
-    if (rarity === 'common') state.boonPity = Math.min(1, state.boonPity + 0.08);
-    else state.boonPity = 0;
-  }
-  _renderBoonOffer(ctx) {
-    const W = this.game.canvas.width, H = this.game.canvas.height;
-    const o = this._boonOffer;
-    ctx.fillStyle = 'rgba(6,4,12,0.82)';
-    ctx.fillRect(0, 0, W, H);
-    const info = BOON_RARITY_INFO[o.rarity];
-    text(ctx, '◆ 回响祝福 ◆', W / 2, 64, 'title', info.color, { align: 'center' });
-    text(ctx, `本次稀有度〔${info.label}〕 · 选择一枚,效力持续至本章结束`, W / 2, 116, 'small', '#a9a07e', { align: 'center' });
-    const n = o.choices.length;
-    const cardW = 260, cardH = 300, gap = 40;
-    const x0 = (W - (n * cardW + (n - 1) * gap)) / 2;
-    for (let i = 0; i < n; i++) {
-      const def = o.choices[i];
-      const x = x0 + i * (cardW + gap);
-      const y = 170;
-      const sel = i === o.idx;
-      const col = BOON_RARITY_INFO[def.rarity].color;
-      const owned = state.boons.filter(b => b.id === def.id).length;
-      ctx.fillStyle = sel ? 'rgba(30,22,54,0.98)' : 'rgba(18,14,32,0.95)';
-      ctx.fillRect(x, y, cardW, cardH);
-      ctx.strokeStyle = sel ? col : 'rgba(120,100,150,0.5)';
-      ctx.lineWidth = sel ? 3 : 2;
-      ctx.strokeRect(x + 1, y + 1, cardW - 2, cardH - 2);
-      if (sel) {
-        const pulse = 0.6 + 0.4 * Math.sin(o.t * 5);
-        ctx.globalAlpha = pulse * 0.18;
-        ctx.fillStyle = col;
-        ctx.fillRect(x, y, cardW, cardH);
-        ctx.globalAlpha = 1;
-      }
-      // 编号角标
-      text(ctx, `${i + 1}`, x + 12, y + 12, 'medium', col);
-      text(ctx, def.name, x + cardW / 2, y + 66, 'large', col, { align: 'center' });
-      text(ctx, BOON_RARITY_INFO[def.rarity].label + (def.cls ? ' · 职业专属' : ''), x + cardW / 2, y + 106, 'small', '#8b7f5e', { align: 'center' });
-      ctx.strokeStyle = 'rgba(183,140,224,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x + 30, y + 138); ctx.lineTo(x + cardW - 30, y + 138); ctx.stroke();
-      this._renderWrapped(ctx, def.desc, x + 26, y + 158, cardW - 52, 'medium', '#d6c8a4');
-      // 底部常驻信息行:卡片不再下半空置(选中态由边框+脉冲表达,不挤占卡内空间)
-      ctx.strokeStyle = 'rgba(120,100,150,0.3)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x + 30, y + cardH - 42); ctx.lineTo(x + cardW - 30, y + cardH - 42); ctx.stroke();
-      text(ctx, owned > 0 ? `已持有 ×${owned}` : (def.cls ? '职业专属' : '本章生效'),
-        x + cardW / 2, y + cardH - 30, 'small', owned > 0 ? '#e0b76a' : '#8b7f5e', { align: 'center' });
-    }
-    // 操作提示放在卡片正下方(y520):H-46 会压到底部技能栏的残影上
-    text(ctx, `1/2/3 或 ←→+ENTER 选择 · S 跳过(+${BOON_SKIP_GOLD} 金)`, W / 2, 520, 'small', '#a9a07e', { align: 'center' });
-  }
+  // ===== 回响祝福三选一(实现在 BoonPicker;以下为兼容委托) =====
+  get _boonOffer() { return this.boonPicker.offer; }
+  set _boonOffer(v) { this.boonPicker.offer = v; }
+  get _boonQueue() { return this.boonPicker.queue; }
+  _queueBoon(minRarity = 'common') { this.boonPicker.enqueue(minRarity); }
+  _tryOpenBoonOffer() { this.boonPicker.tryOpen(); }
 
   // ===== 刻印守护战:拾取刻印的瞬间,守护者从周身苏醒 =====
   _startSealAmbush() {
@@ -751,7 +651,7 @@ export class GameScene {
 
     // 回响祝福三选一:冻结世界,等玩家决策(所有菜单关闭后才弹出)
     this._tryOpenBoonOffer();
-    if (this._boonOffer) { this._updateBoonOffer(dt); return; }
+    if (this.boonPicker.offer) { this.boonPicker.update(dt); return; }
     // 爆裂词缀危险区
     this._updateHazards(dt);
 
@@ -930,7 +830,13 @@ export class GameScene {
       if (d < bestD) { bestD = d; this._nearbyNpc = n; }
     }
     if (this._nearbyNpc && this.game.input.keysJustPressed.has('KeyT')) {
-      this._startDialog(this._nearbyNpc.dialog);
+      if (this._nearbyNpc.shop) {
+        // 游商:不进对话树,直接开货架
+        this.game.audio.sfxClick();
+        this.game.setScene('shop');
+      } else {
+        this._startDialog(this._nearbyNpc.dialog);
+      }
     }
     // 静谧泉(支线房):靠近按 T 回 40 血,一次性(跨存档记忆)
     this._nearbyShrine = null;
@@ -1008,11 +914,15 @@ export class GameScene {
   _onPlayerDeath() {
     if (this._dying) return;
     this._dying = true;
-    this._respawnTimer = 1.1; // 由 update 倒计时,暂停/对话时自动冻结
+    this._respawnTimer = 2.2; // 由 update 倒计时,暂停/对话时自动冻结(加长:给死亡节拍留时间)
     this.game.resetCombo();   // 死亡清空连击链(无打断特效,静默)
     state.stats.deaths += 1;
     this.game.audio.sfxDeath();
     this.game.camera.shake(16, 0.7);
+    // 死亡节拍:时间减速 + 短顿,让"失去"有一瞬的重量
+    this.game.hitstop = Math.max(this.game.hitstop || 0, 0.12);
+    this.game.triggerSlowmo(1.0);
+    this.game.spawnDeathParticles(this.player.x, this.player.y, '#b78ce0');
   }
   _respawn() {
     const sp = this.world.spawnPoint;
@@ -1022,6 +932,10 @@ export class GameScene {
     this.player.alive = true;
     this.player.iFrame = 1.5;
     state.hp = this.player.hp;
+    // 重生瞬间:暖白闪 + 归环粒子,与消散的冷紫形成呼应
+    this.game.bossPhaseFlash = 0.6;
+    this.game._bossPhaseColor = '#f4ecd0';
+    this.game.spawnLevelUpParticles(sp.x, sp.y);
     // 死亡的代价:失去最高稀有度的一枚祝福(局外资产全保留 —— "失去刚赚的,保留已投入的")
     if (state.boons.length > 0) {
       const order = { common: 0, rare: 1, epic: 2, aspect: 1 };
@@ -1236,8 +1150,45 @@ export class GameScene {
         && this.player.distance(this.chapterBoss) < 560) this._renderBossHud(ctx, this.chapterBoss);
     if (this.chapterComplete) this._renderChapterComplete(ctx);
     if (this.paused) this._renderPause(ctx);
+    // 死亡仪式:黑幕渐入 + "回声消散"(盖住 HUD,给死亡一拍留白)
+    if (this._dying) this._renderDeathOverlay(ctx);
+    // 触屏动作按钮(仅触屏设备显示;对话/暂停/祝福覆盖层出现时隐藏,避免误触)
+    if (this.game.input.touchMode && !this.dialogActive && !this.paused
+        && !this.chapterComplete && !this._boonOffer && !this._dying) {
+      this._renderTouchButtons(ctx);
+    }
     // 回响祝福三选一(最上层)
-    if (this._boonOffer) this._renderBoonOffer(ctx);
+    if (this.boonPicker.offer) this.boonPicker.render(ctx);
+  }
+
+  _renderTouchButtons(ctx) {
+    for (const b of this.game.input.getTouchButtons()) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = '#0c0a14';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = '#b78ce0'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.95;
+      text(ctx, b.label, b.x, b.y - 11, 'small', '#f4ecd0', { align: 'center' });
+      ctx.restore();
+    }
+  }
+
+  _renderDeathOverlay(ctx) {
+    const W = this.game.canvas.width, H = this.game.canvas.height;
+    const t = 2.2 - this._respawnTimer; // 已进行的时间
+    const a = Math.min(0.85, Math.max(0, t) * 1.4);
+    ctx.fillStyle = `rgba(4, 2, 10, ${a})`;
+    ctx.fillRect(0, 0, W, H);
+    if (t > 0.35) {
+      ctx.globalAlpha = Math.min(1, (t - 0.35) * 1.6);
+      text(ctx, '回声,正在消散……', W / 2, H / 2 - 20, 'title', '#b78ce0', { align: 'center' });
+      ctx.globalAlpha = Math.min(1, (t - 0.6) * 1.4) * 0.85;
+      text(ctx, '但枯荣之环,会把你重新想起', W / 2, H / 2 + 44, 'small', '#8b7f5e', { align: 'center' });
+      ctx.globalAlpha = 1;
+    }
   }
 
   _renderChapterComplete(ctx) {
@@ -1284,7 +1235,7 @@ export class GameScene {
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
     ctx.strokeText('!', s.x, y); ctx.fillText('!', s.x, y);
     if (this._nearbyNpc === n) {
-      const tp = '按 T 交谈';
+      const tp = n.shop ? '按 T 买卖 · 游商尘' : '按 T 交谈';
       const tw = textWidth(ctx, tp, 'small');
       ctx.fillStyle = 'rgba(8,6,14,0.72)';
       ctx.fillRect(s.x - tw / 2 - 7, y + 17, tw + 14, 21);
@@ -1364,6 +1315,8 @@ export class GameScene {
     this._renderObjective(ctx);
     // 罗盘(指向 BOSS)
     this._renderCompass(ctx);
+    // 支线房预告(Hades 门图标):未踏入的试炼/宝藏/静谧房,靠近时在房顶亮出类型与奖励
+    this._renderSideRoomHints(ctx);
     // 帮助按钮
     this._renderHelpButton(ctx);
     if (this.helpOpen) this._renderHelp(ctx);
@@ -1602,6 +1555,36 @@ export class GameScene {
     ctx.fillStyle = 'rgba(8,6,14,0.72)';
     ctx.fillRect(cx - lw / 2 - 6, cy + 24, lw + 12, 20);
     text(ctx, lbl, cx, cy + 28, 'small', '#d6c8a4', { align: 'center' });
+  }
+
+  // 支线房预告(Hades 门后奖励):未踏入的试炼/宝藏/静谧房,靠近 560px 内
+  // 在房间上沿亮出「类型 · 奖励」徽标,让"走哪条岔路"成为有依据的选择
+  _renderSideRoomHints(ctx) {
+    const cam = this.game.camera;
+    const t = this.world.tile;
+    for (const room of this.world.sideRooms || []) {
+      if (room.visited) continue;
+      const wx = (room.cx + 0.5) * t, wy = room.y * t - 14;
+      const d = Math.hypot(this.player.x - wx, this.player.y - wy);
+      if (d > 560) continue;
+      const def = SIDE_ROOMS[room.side];
+      if (!def) continue;
+      const s = cam.worldToScreen(wx, wy);
+      const a = Math.min(1, (560 - d) / 160) * 0.92; // 靠近渐显
+      ctx.save();
+      ctx.globalAlpha = a;
+      const l1 = `◆ ${def.label}`;
+      const l2 = def.desc;
+      const w1 = textWidth(ctx, l1, 'small'), w2 = textWidth(ctx, l2, 'small');
+      const bw = Math.max(w1, w2) + 20;
+      ctx.fillStyle = 'rgba(8,6,14,0.78)';
+      ctx.fillRect(s.x - bw / 2, s.y - 44, bw, 40);
+      ctx.strokeStyle = def.color; ctx.lineWidth = 1;
+      ctx.strokeRect(s.x - bw / 2 + 0.5, s.y - 43.5, bw - 1, 39);
+      text(ctx, l1, s.x, s.y - 40, 'small', def.color, { align: 'center' });
+      text(ctx, l2, s.x, s.y - 22, 'small', '#8b7f5e', { align: 'center' });
+      ctx.restore();
+    }
   }
 
   _renderHelpButton(ctx) {
