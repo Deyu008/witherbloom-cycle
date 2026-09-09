@@ -167,6 +167,9 @@ export class DialogScene {
     if (handler.startsWith('flag:')) {
       const flag = handler.slice(5);
       state.flags[flag] = true;
+    } else if (handler === 'ending_choice') {
+      // 寂渊终问之后进入结局(数据侧入口;boss.js 传函数 onFinish 时走那条路)
+      this.game.goto('ending');
     } else if (handler.startsWith('collected:')) {
       const k = handler.slice(10);
       state.collected[k] = true;

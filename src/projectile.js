@@ -43,8 +43,8 @@ export class Projectile {
       const rr = (e.w / 2) + this.radius;
       const dx = e.x - this.x, dy = e.y - this.y;
       if (dx * dx + dy * dy < rr * rr) {
-        e.takeDamage(this.damage, this.x, this.y, 40);
-        if (game?.onDamageDealt) game.onDamageDealt(this.damage);
+        const dealt = e.takeDamage(this.damage, this.x, this.y, 40);
+        if (game?.onDamageDealt) game.onDamageDealt(dealt || 0);
         if (this.side === 'player' && game?.audio) {
           game.audio.sfxHit();
           game.spawnFloatText(e.x, e.y - 34, `${Math.round(this.damage)}`, '#b78ce0');

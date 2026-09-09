@@ -129,13 +129,13 @@ export class SkillTreeScene {
     // 顶部状态: 当前碎片
     text(ctx, `◆ 碎片 ${state.shards}`, W / 2, 170, 'large', '#b78ce0', { align: 'center' });
 
-    // 2 列布局(网格下沿 = 212 + 3×148 = 656,给底部提示留出空间)
+    // 2 列布局(节点行距加大填满纵向:3×142+2×22=470,网格 204-674,底部提示不叠)
     const cols = 2;
-    const cellW = 380, cellH = 130;
-    const gapX = 30, gapY = 18;
+    const cellW = 380, cellH = 142;
+    const gapX = 30, gapY = 22;
     const totalW = cols * cellW + (cols - 1) * gapX;
     const startX = (W - totalW) / 2;
-    const startY = 212;
+    const startY = 204;
 
     for (let i = 0; i < NODE_ORDER.length; i++) {
       const key = NODE_ORDER[i];

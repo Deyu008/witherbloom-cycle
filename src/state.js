@@ -74,8 +74,11 @@ export const state = freshState();
 // 应用存档
 export function applySave(save) {
   const fresh = freshState();
-  Object.assign(state, fresh, save);
+  // 深拷贝:存档槽对象是共享引用,浅合并会让游玩过程写穿内存里的存档
+  // (退出不存档想回滚时拿到的却是污染后的数据)
+  const copy = save ? JSON.parse(JSON.stringify(save)) : {};
+  Object.assign(state, fresh, copy);
   // 嵌套结构整体替换会让旧档丢掉新增键:以新 schema 为底、存档值覆盖
-  if (save && save.skills) state.skills = Object.assign(makeSkills(), save.skills);
+  if (copy && copy.skills) state.skills = Object.assign(makeSkills(), copy.skills);
   state.fromSave = null;
 }

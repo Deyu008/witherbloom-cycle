@@ -5,7 +5,8 @@ export class Input {
     this.keys = new Set();
     this.keysJustPressed = new Set();
     this.keysJustReleased = new Set();
-    this.mouseX = 0; this.mouseY = 0;
+    this.mouseX = -1e9; this.mouseY = -1e9; // 未动过鼠标时不激活鼠标瞄准
+    this._mouseSeen = false;                // 首次 mousemove 才开始精瞄(初始 0,0 会让开局朝世界左上角挥空)
     this.mouseDown = false;
     this.mouseJustClicked = false;
     this.mouseRightDown = false;
@@ -49,6 +50,7 @@ export class Input {
     const c = this.canvas;
     c.addEventListener('mousemove', e => {
       const rect = c.getBoundingClientRect();
+      this._mouseSeen = true;
       this.mouseX = (e.clientX - rect.left) * (c.width / rect.width);
       this.mouseY = (e.clientY - rect.top) * (c.height / rect.height);
     });

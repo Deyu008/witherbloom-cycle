@@ -126,7 +126,7 @@ export const SKILL_BASE = {
   recall: { name: '追忆',   level: 1, cooldown: 4.0,  desc: '释放回声,造成魔法伤害' },
   shield: { name: '枯荣之护', level: 1, cooldown: 8.0,  desc: '短暂无敌' },
   echo:   { name: '回响共鸣', level: 1, cooldown: 12.0, desc: '治疗自身并清空小怪仇恨' },
-  heal:   { name: '晨露',   level: 0, cooldown: 20.0, desc: '消耗露珠大幅回血' },
+  heal:   { name: '晨露',   level: 0, cooldown: 20.0, desc: 'F 饮露珠回血 30,每级 +12' },
 };
 
 // ─────────────────────────────────────────────────────────────

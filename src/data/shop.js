@@ -36,7 +36,7 @@ export function applyPurchase(item, state, player) {
   else if (item.id === 'ember') { state.ember = (state.ember || 0) + 1; state.mp = Math.min(state.maxMp, state.mp + 15); }
   else if (item.id === 'leaf') {
     state.leaf = (state.leaf || 0) + 1;
-    for (const k of Object.keys(state.skills)) state.skills[k].currentCd = 0;
+    // 冷却真源在 player.skillXxxCd(与地图拾取枯叶的行为一致)
     if (player) { player.skillRecallCd = 0; player.skillShieldCd = 0; player.skillEchoCd = 0; }
   } else if (item.id === 'shard') state.shards = (state.shards || 0) + 1;
 }

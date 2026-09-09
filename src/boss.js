@@ -115,7 +115,8 @@ export class Boss extends Entity {
     if (this.bossType === 'forgotten') {
       if (state.flags.boss4_ending_triggered) return;
       state.flags.boss4_ending_triggered = true;
-      setTimeout(() => game?.goto?.('ending'), 800);
+      // 游戏时钟延时(真实 setTimeout 不受暂停冻结,会在暂停中强切场景)
+      this._endingDelay = 0.8;
     }
   }
 
@@ -171,6 +172,20 @@ export class Boss extends Entity {
   }
 
   update(dt, game) {
+    // 第 4 章结局延时(游戏时钟):死亡/释怀后仍倒数,暂停时随场景一起冻结
+    if (this._endingDelay != null) {
+      this._endingDelay -= dt;
+      if (this._endingDelay <= 0) {
+        const wantDialog = this._endingDialog;
+        this._endingDelay = null;
+        this._endingDialog = false;
+        if (wantDialog) {
+          if (game.current?._startDialog) game.current._startDialog('forgotten_question', { onFinish: () => game.goto('ending') });
+        } else {
+          game?.goto?.('ending');
+        }
+      }
+    }
     if (!this.alive) return;
     if (!this.alerted) { super.update(dt); return; }
     const world = this.world;
@@ -505,9 +520,9 @@ export class Boss extends Entity {
     if (this.bossType === 'forgotten') {
       if (state.flags.boss4_ending_triggered) return;
       state.flags.boss4_ending_triggered = true;
-      setTimeout(() => {
-        if (game.current?._startDialog) game.current._startDialog('forgotten_question', { onFinish: () => game.goto('ending') });
-      }, 900);
+      // 游戏时钟延时:真实 setTimeout 不受暂停冻结,会在暂停中弹对话/强切场景
+      this._endingDelay = 0.9;
+      this._endingDialog = true;
     }
   }
 

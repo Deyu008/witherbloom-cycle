@@ -123,8 +123,13 @@ export class SkillInfoScene {
       text(ctx, costTxt + cdTxt, listX + 88, y + 26, 'small', sel ? PAL_GOLD : '#6f6650');
     }
 
-    // 右侧:演示面板
+    // 右侧:演示面板(外层定高容器:不同技能描述行数不同,统一边界避免翻页时底边跳动)
     const dx = 500, dy = 136, dw = W - dx - 56, dh = 386;
+    const outerY = dy - 28, outerH = (H - 70) - outerY;
+    ctx.fillStyle = 'rgba(8,6,14,0.55)';
+    ctx.fillRect(dx - 16, outerY, dw + 32, outerH);
+    ctx.strokeStyle = 'rgba(183,140,224,0.25)'; ctx.lineWidth = 1;
+    ctx.strokeRect(dx - 15.5, outerY + 0.5, dw + 31, outerH - 1);
     ctx.fillStyle = 'rgba(12,9,22,0.92)';
     ctx.fillRect(dx, dy, dw, dh);
     ctx.strokeStyle = 'rgba(183,140,224,0.4)'; ctx.lineWidth = 2;

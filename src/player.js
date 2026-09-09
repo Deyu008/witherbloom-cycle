@@ -132,7 +132,7 @@ export class Player extends Entity {
     const k = game.input;
     // 自动瞄准:鼠标最近动过→朝鼠标;否则锁最近敌人;都没有→朝移动方向
     // (这样只用 WASD + J 就能玩,鼠标是可选的精瞄)
-    if (k.mouseX !== this._lmx || k.mouseY !== this._lmy) {
+    if (k._mouseSeen && (k.mouseX !== this._lmx || k.mouseY !== this._lmy)) {
       this._lmx = k.mouseX; this._lmy = k.mouseY;
       this._mouseActiveT = 0.4;
     }
@@ -279,8 +279,8 @@ export class Player extends Entity {
         if (crit) dmg *= COMBAT.critMul + mods.critMul;
         dmg = Math.max(1, Math.round(dmg));
         const wasAlive = e.alive;
-        e.takeDamage(dmg, this.x, this.y, knockback);
-        game.onDamageDealt(dmg);
+        const dealt = e.takeDamage(dmg, this.x, this.y, knockback);
+        game.onDamageDealt(dealt || 0); // 无敌目标返回 0,统计口径按实际生效值
         game.audio.sfxHit(crit);
         // 命中粒子沿挥击方向喷射(不再无脑向四周炸开)
         game.spawnHitParticles(e.x, e.y, crit ? '#ffd700' : '#ffe090', this.aimAngle);
@@ -411,9 +411,12 @@ export class Player extends Entity {
     if (state.dew <= 0 && state.hp >= state.maxHp) return;
     if (state.dew > 0) {
       state.dew -= 1;
-      this.heal(30);
+      // 晨露等级真实生效(Lv0 基线 30,每级 +12;技能树升级不再是无读数的安慰剂)
+      const lv = state.skills?.heal?.level ?? 0;
+      const amount = 30 + lv * 12;
+      this.heal(amount);
       game.audio.sfxPickup(880);
-      game.spawnFloatText(this.x, this.y - 30, '+30', '#8ad0e0');
+      game.spawnFloatText(this.x, this.y - 30, `+${amount}`, '#8ad0e0');
       // 回血露珠:淡蓝露滴从脚下升起
       for (let i = 0; i < 10; i++) {
         game.particles.emit({

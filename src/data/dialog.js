@@ -132,8 +132,12 @@ export const DIALOGS = {
     condition: (state) => !state.collected.lullaby,
     lines: [
       { speaker: '灰烬之影', text: '……不记得了。' },
+      { speaker: '灰烬之影', text: '但春天的时候……森林深处,好像有人哼过这样的歌。' },
       { speaker: '灰烬之影', text: '那也没关系。' },
     ],
+    // 没有乐谱也能按 V"释怀",但不点亮 boss2_released(共忆结局需要它);
+    // 这条线索把玩家指回第一章的未收集秘密(罗盘在集齐刻印后也会指向它)
+    onFinish: 'flag:lullaby_hint',
   },
 
   burning_king_intro: {

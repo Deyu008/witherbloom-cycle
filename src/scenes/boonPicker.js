@@ -53,7 +53,8 @@ export class BoonPicker {
   pick(i) {
     const def = this.offer.choices[i];
     if (!def) return;
-    state.boons.push({ id: def.id, rarity: this.offer.rarity });
+    // 稀有度取卡面 def.rarity(形态祝福是 aspect 金色;存 roll 稀有度会让 HUD 着色错成蓝色)
+    state.boons.push({ id: def.id, rarity: def.rarity });
     this.settlePity(this.offer.rarity);
     // 即刻生效类:上限提升同时回血/回蓝
     if (def.mods.maxHp) {

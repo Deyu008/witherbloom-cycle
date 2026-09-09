@@ -99,9 +99,18 @@ export class Game {
     if (!this.running) return;
     const dt = Math.min(0.05, (t - this.lastT) / 1000);
     this.lastT = t;
-    this._update(dt);
-    this._render();
-    this.input.endFrame();
+    try {
+      this._update(dt);
+      this._render();
+    } catch (e) {
+      // 场景异常不再断掉 rAF 链(否则永久黑屏冻结);打日志并停在一个可诊断的状态
+      console.error('[loop] update/render 异常', e);
+      this.running = false;
+      throw e;
+    }
+    // hitstop 期间场景未消费输入,endFrame 推迟到解冻帧,
+    // 否则顿帧里按下的闪避/技能会被静默丢弃(keydown 有防重,不会双触发)
+    if (this.hitstop <= 0) this.input.endFrame();
     this.frameCount++;
     requestAnimationFrame((tt) => this._loop(tt));
   }
@@ -150,6 +159,12 @@ export class Game {
         this.globalFade = 0;
         this.fadeTarget = 0;
         this.transition = null;
+        // 过渡期间排队的下一次切换(如结局对话 onFinish 撞上过渡尾部)
+        if (this._pendingGoto) {
+          const [n, o] = this._pendingGoto;
+          this._pendingGoto = null;
+          this.goto(n, o);
+        }
       }
       return; // 过渡中不更新场景
     }
@@ -199,15 +214,19 @@ export class Game {
       }
     }
     // 全局暗角(canvas 尺寸不变,gradient 只创建一次并缓存)
-    if (!this._vignette) {
-      const vg = c.createRadialGradient(W/2, H/2, Math.min(W,H)*0.22, W/2, H/2, Math.max(W,H)*0.72);
-      vg.addColorStop(0, 'rgba(0,0,0,0)');
-      vg.addColorStop(0.7, 'rgba(0,0,0,0.28)');
-      vg.addColorStop(1, 'rgba(0,0,0,0.82)');
-      this._vignette = vg;
+    // 暂停期间跳过:0.78 黑幕再叠边缘 0.82 暗角,四周会压成近纯黑的"隧道框",
+    // 中心反而透亮,像渲染残留;祝福/结算覆盖层自身已近全暗,叠加不可见,无需跳过
+    if (!this.current?.paused) {
+      if (!this._vignette) {
+        const vg = c.createRadialGradient(W/2, H/2, Math.min(W,H)*0.22, W/2, H/2, Math.max(W,H)*0.72);
+        vg.addColorStop(0, 'rgba(0,0,0,0)');
+        vg.addColorStop(0.7, 'rgba(0,0,0,0.28)');
+        vg.addColorStop(1, 'rgba(0,0,0,0.82)');
+        this._vignette = vg;
+      }
+      c.fillStyle = this._vignette;
+      c.fillRect(0, 0, W, H);
     }
-    c.fillStyle = this._vignette;
-    c.fillRect(0, 0, W, H);
     // 战斗反馈/色温后处理
     this._renderPostFX(c);
     // 黑色淡入淡出
@@ -264,6 +283,12 @@ export class Game {
   }
 
   goto(name, opts = {}) {
+    // 过渡进行中重入:新过渡会硬拉 globalFade 回 0 造成画面跳变,且旧过渡的
+    // midCallback 被覆盖丢失。旧过渡已完成中段切换的,排队下一场;否则忽略(防抖)
+    if (this.transition) {
+      if (this.transition.midCallbackCalled) this._pendingGoto = [name, opts];
+      return;
+    }
     // 触发场景切换过渡;清掉残留横幅(否则会穿透叠印到新场景/菜单上)
     this._banner = null;
     this._bossLineBanner = null;

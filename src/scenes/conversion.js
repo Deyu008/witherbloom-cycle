@@ -13,6 +13,7 @@
 import { text } from '../pixelfont.js';
 import { state } from '../state.js';
 import { SPRITE_LIB } from '../sprite.js';
+import { applyPurchase } from '../data/shop.js';
 
 // 三个转换方向,显示顺序固定
 const CONVERSIONS = [
@@ -69,7 +70,10 @@ export class ConversionScene {
       return;
     }
     state[conv.from] = src - 2;
-    state[conv.to] = (state[conv.to] || 0) + 1;
+    // 转换产物与拾取/购买行为一致,立即生效(余烬回蓝、枯叶重置冷却):
+    // 否则整个循环里唯一有意义的方向只剩"万物→露珠",策略价值为零
+    // (applyPurchase 同时负责目标资源 +1 计数)
+    applyPurchase({ id: conv.to }, state, this.game.scenes.game?.player);
     // 反馈
     this.game.audio.sfxClick();
     const srcLabel = conv.from === 'dew' ? '露珠' : conv.from === 'ember' ? '余烬' : '枯叶';

@@ -10,6 +10,8 @@ export class EndingScene {
     this.fadeT = 0;
     // 根据状态选择结局
     const f = state.flags;
+    // 背叛杀:Boss 力竭放下刀后仍被击杀(bossN_betrayed)——寂灭结局的"处决"变体
+    this.betrayed = !!(f.boss1_betrayed || f.boss2_betrayed || f.boss3_betrayed || f.boss4_betrayed);
     if (f.boss1_released && f.boss2_released && f.boss3_released && state.collected.seventhCrest) {
       this.ending = 'shared'; // 共忆
     } else if (f.boss1_defeated && f.boss2_defeated && f.boss3_defeated) {
@@ -38,17 +40,27 @@ export class EndingScene {
       { speaker: '旁白', text: '紫。寂渊的颜色。' },
       { speaker: '王树', text: '谢谢你们,替我记住了他。' },
     ];
-    if (this.ending === 'extinct') return [
-      { speaker: '旁白', text: '寂渊消散了。' },
-      { speaker: '旁白', text: '没有风,没有叶脉,没有歌。' },
-      { speaker: '寂渊', text: '……这样,也好。' },
-      { speaker: '寂渊', text: '不必再被忘记了。' },
-      { speaker: '寂渊', text: '因为——再也没有人,记得任何事。' },
-      { speaker: '旁白', text: '世界归于纯白。' },
-      { speaker: '旁白', text: '没有循环,没有记忆,没有名字。' },
-      { speaker: '旁白', text: '只有一片空白,在曾经是王树的地方,轻轻哼着——' },
-      { speaker: '旁白', text: '一首,从未存在过的摇篮曲。' },
-    ];
+    if (this.ending === 'extinct') {
+      const lines = [
+        { speaker: '旁白', text: '寂渊消散了。' },
+        { speaker: '旁白', text: '没有风,没有叶脉,没有歌。' },
+        { speaker: '寂渊', text: '……这样,也好。' },
+        { speaker: '寂渊', text: '不必再被忘记了。' },
+        { speaker: '寂渊', text: '因为——再也没有人,记得任何事。' },
+        { speaker: '旁白', text: '世界归于纯白。' },
+        { speaker: '旁白', text: '没有循环,没有记忆,没有名字。' },
+        { speaker: '旁白', text: '只有一片空白,在曾经是王树的地方,轻轻哼着——' },
+        { speaker: '旁白', text: '一首,从未存在过的摇篮曲。' },
+      ];
+      // 处决变体:曾在他们力竭放下刀时挥下 —— 寂灭线里多一记道德回声
+      if (this.betrayed) {
+        lines.splice(4, 0,
+          { speaker: '寂渊', text: '你打败的那些人里——' },
+          { speaker: '寂渊', text: '有几个,曾经放下了刀。' });
+        lines.push({ speaker: '旁白', text: '而空白,不记得你曾有机会停手。' });
+      }
+      return lines;
+    }
     return [
       { speaker: '旁白', text: '你打败了寂渊。' },
       { speaker: '旁白', text: '世界,回到了循环。' },

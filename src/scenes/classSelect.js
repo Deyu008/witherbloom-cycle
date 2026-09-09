@@ -58,19 +58,19 @@ function applyClassToState(id) {
     state.maxMp = Math.round(BASE_MP * 1.3);   // 78
     state.maxHp = BASE_HP;                       // 100
     // 攻击减 15% — 取 Math.round(14 * 0.85) = 12(更贴近 -15% 的"略微弱势"幅度)
-    state._classAtk = Math.round(BASE_ATK * 0.85); // 12
+    // (职业攻击差异由 player.js 读 CLASS_MODS.attackDamage,_classAtk 双轨已删)
   } else if (id === 'forge') {
     state.maxHp = Math.round(BASE_HP * 1.3);    // 130
     state.maxMp = Math.round(BASE_MP * 0.8);    // 48
-    state._classAtk = BASE_ATK;                  // 14
+    // (职业攻击差异由 player.js 读 CLASS_MODS.attackDamage,_classAtk 双轨已删)
   } else if (id === 'weave') {
     state.maxHp = Math.round(BASE_HP * 0.9);    // 90
     state.maxMp = BASE_MP;                       // 60
-    state._classAtk = BASE_ATK;                  // 14
+    // (职业攻击差异由 player.js 读 CLASS_MODS.attackDamage,_classAtk 双轨已删)
   } else {
     state.maxHp = BASE_HP;
     state.maxMp = BASE_MP;
-    state._classAtk = BASE_ATK;
+    // (职业攻击差异由 player.js 读 CLASS_MODS.attackDamage,_classAtk 双轨已删)
   }
   // 同步当前血/蓝到新的上限
   state.hp = state.maxHp;
@@ -172,18 +172,24 @@ export class ClassSelectScene {
   }
 
   _drawCard(ctx, x, y, w, h, item, selected) {
-    // 卡片底
-    ctx.fillStyle = selected ? '#2a1a4a' : '#16102a';
+    // 卡片底(未选中压暗,与背景拉开至少两档亮度差,轮廓不再"融"进背景)
+    ctx.fillStyle = selected ? '#2a1a4a' : '#1c1533';
     ctx.fillRect(x, y, w, h);
     // 顶色带
     ctx.fillStyle = item.color;
     ctx.fillRect(x, y, w, 6);
-    // 边框
-    ctx.strokeStyle = selected ? item.color : '#3a2a5a';
+    // 边框(未选中用职业色 35% 透明度,任何背景上都可辨)
+    ctx.strokeStyle = selected ? item.color : '#6a5488';
     ctx.lineWidth = selected ? 3 : 2;
     ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-    // 选中时的角落光点
+    // 选中:职业色外圈光晕描边 + 四角光点
     if (selected) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = item.color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 3, y - 3, w + 6, h + 6);
+      ctx.restore();
       ctx.fillStyle = item.color;
       ctx.fillRect(x - 4, y - 4, 8, 8);
       ctx.fillRect(x + w - 4, y - 4, 8, 8);

@@ -116,7 +116,9 @@ export class GameScene {
     this._pickupStreakT = 0;
     this._skillFlash = { Q: 0, E: 0, R: 0, SPC: 0 };
     this._skillPrev = {};
-    // 回响祝福:每章重置;队列与当前三选一
+    // 回响祝福:每章重置;上限类(maxHp/maxMp)是写进 state 的持久值,
+    // 清空前先对称回退,否则逐章滚雪球(与 UI"效力至本章结束"矛盾)
+    this._rollbackCapBoons();
     state.boons = [];
     state.boonPity = 0;
     this.boonPicker = new BoonPicker(this.game, this);
@@ -170,7 +172,8 @@ export class GameScene {
 
   // 本章刻印进度(按 flags 计算,跨存档一致)
   _sealProgress() {
-    const need = this.world?.sealCount ?? 2;
+    // 极端地图可达房间不足时,_placeSeals 会少放;need 随实际放置数收缩,杜绝集不齐的软锁
+    const need = Math.min(this.world?.sealCount ?? 2, this.world?.sealPoints?.length ?? 2);
     let got = 0;
     for (let i = 0; i < need; i++) {
       if (state.flags[`seal_${this.chapter}_${i}`]) got++;
@@ -205,6 +208,7 @@ export class GameScene {
   _spawnPickups() {
     const list = this.levelData.pickups || [];
     const rooms = this._roomsByDistance();
+    this._secretPickups = []; // 未拾取的秘密(罗盘在集齐刻印后指向它们,救共忆线)
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
       if (state.collected[p.id]) continue;
@@ -216,6 +220,7 @@ export class GameScene {
       };
       const l = new Loot(c.x, c.y, p.id);
       l.world = this.world;
+      this._secretPickups.push(l);
       const iconLib = SPRITE_LIB.icons || {};
       const skillLib = SPRITE_LIB.skills || {};
       l.sprite = iconLib[p.sprite] || skillLib[p.sprite] || iconLib.gold;
@@ -323,7 +328,9 @@ export class GameScene {
   // 静谧房:无敌人(泉水在 enter() 的 _shrines 里,T 交互回血)
   _spawnSideRooms() {
     const t = this.levelData.tile;
-    const rand = Math.random;
+    // 与主房一致使用章节种子(独立扰动):同存档重进同图,支线房守卫不再随机变化
+    const rngState = { s: ((this.levelData.seed || 1) ^ 0x5eed) >>> 0 };
+    const rand = () => { rngState.s = (rngState.s * 1664525 + 1013904223) >>> 0; return (rngState.s & 0xffffff) / 0xffffff; };
     for (const room of this.world.sideRooms || []) {
       room._enemyLeft = 0;
       room._cleared = false;
@@ -559,19 +566,22 @@ export class GameScene {
 
   // ===== 寒铁桥回忆(第 4 章无战斗叙事段)=====
   // 走进前三个新房间时,桥面"刻着的记忆"浮现 —— 非阻塞横幅 + 收录回响日志
-  _updateBridgeMemories(room) {
+  _updateBridgeMemories() {
     if (this.chapter !== 4 || !this.levelData.bridgeMemories) return;
-    // 按访问序而非房间序:第 2/3/4 个踏入的房间触发三段回忆
-    const visitIdx = this._roomVisitCount - 2; // 0,1,2 对应三段
-    if (visitIdx < 0 || visitIdx >= this.levelData.bridgeMemories.length) return;
-    const m = this.levelData.bridgeMemories[visitIdx];
-    if (m.done) return;
-    m.done = true;
-    this.game._bossLineBanner = { text: m.text, color: '#8aa9c4', life: 4.5, delay: 0 };
-    this.game.audio.sfxWhisper();
-    if (m.echo && !(state.echoes || []).includes(m.echo)) {
-      state.echoes.push(m.echo);
-      this.game.spawnFloatText(this.player.x, this.player.y - 46, '◆ 记忆已收录', '#b78ce0');
+    // 按桥面刻度(tx,tile 单位)位置触发:走进对应刻度弹出回忆。
+    // (旧实现按"第 N 次房间切换"计数,在起点房来回横跳就会烧完三段叙事)
+    const t = this.world.tile;
+    for (const m of this.levelData.bridgeMemories) {
+      if (m.done) continue;
+      if (this.player.x >= (m.tx + 0.5) * t) {
+        m.done = true;
+        this.game._bossLineBanner = { text: m.text, color: '#8aa9c4', life: 4.5, delay: 0 };
+        this.game.audio.sfxWhisper();
+        if (m.echo && !(state.echoes || []).includes(m.echo)) {
+          state.echoes.push(m.echo);
+          this.game.spawnFloatText(this.player.x, this.player.y - 46, '◆ 记忆已收录', '#b78ce0');
+        }
+      }
     }
   }
 
@@ -745,8 +755,9 @@ export class GameScene {
         };
         this.game.audio.sfxClick();
       }
-      this._updateBridgeMemories(room);
     }
+    // 寒铁桥记忆:按桥面刻度逐帧检查(玩家可能在同一房间内跨过刻度)
+    this._updateBridgeMemories();
     // BOSS 封印门:靠近时按刻印数开启或提示缺口
     if (!this.world.gateOpen && this.world.gateTiles.length > 0) {
       const t = this.world.tile;
@@ -816,7 +827,10 @@ export class GameScene {
       if (d2 < 19600) { // 140²:磁吸(战斗节奏里顺手收掉落,不跑断腿)
         const d = Math.sqrt(d2);
         const pull = 280 * dt * Math.max(0.4, 1 - d / 160);
-        l.x += (ddx / d) * pull; l.y += (ddy / d) * pull;
+        const nx = l.x + (ddx / d) * pull, ny = l.y + (ddy / d) * pull;
+        // 分轴磁吸:不把掉落物隔墙吸进不可行走格子(否则穿墙卡死捡不到)
+        if (!this.world.solidAtPx(nx, l.y)) l.x = nx;
+        if (!this.world.solidAtPx(l.x, ny)) l.y = ny;
       }
     }
     this.world.loot = this.world.loot.filter(l => l.alive);
@@ -892,6 +906,8 @@ export class GameScene {
       this.game.audio.sfxSecret();
       state.collected[l.type] = true;
       state.stats.secretsFound = (state.stats.secretsFound || 0) + 1;
+      // 从罗盘秘密列表移除
+      this._secretPickups = (this._secretPickups || []).filter(s => s !== l);
       this.game.spawnFloatText(this.player.x, this.player.y - 30, `发现 · ${l._secretLabel}`, '#e0b76a');
       // 镜瞳彩蛋文案:拿到镜瞳本身时提示其能力
       if (l.type === 'mirrorEye') {
@@ -906,7 +922,7 @@ export class GameScene {
     this.game.audio.sfxPickup(660 * Math.pow(1.0595, Math.min(12, streak - 1)));
     if (l.type === 'dew') { state.dew = (state.dew || 0) + 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '+1 露珠', '#8ad0e0'); }
     else if (l.type === 'ember') { state.mp = Math.min(state.maxMp, state.mp + 15); state.ember = (state.ember || 0) + 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '+15 MP', '#e87a3c'); }
-    else if (l.type === 'leaf') { for (const k of Object.keys(state.skills)) state.skills[k].currentCd = 0; this.player.skillRecallCd = 0; this.player.skillShieldCd = 0; this.player.skillEchoCd = 0; state.leaf = (state.leaf || 0) + 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '技能就绪', '#a8d860'); }
+    else if (l.type === 'leaf') { this.player.skillRecallCd = 0; this.player.skillShieldCd = 0; this.player.skillEchoCd = 0; state.leaf = (state.leaf || 0) + 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '技能就绪', '#a8d860'); }
     else if (l.type === 'gold') { state.gold += 10; this.game.spawnFloatText(this.player.x, this.player.y - 30, '+10 金', '#e0b76a'); }
     else if (l.type === 'shard') { state.shards += 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '+1 碎片', '#b78ce0'); }
   }
@@ -975,6 +991,20 @@ export class GameScene {
     this._dying = false;
     this._respawnTimer = 0;
   }
+
+  // 上限类祝福回退(章末清空 boons 前调用):与 boonPicker 获得时的写入对称,
+  // 否则 maxHp/maxMp 永久残留、逐章滚雪球
+  _rollbackCapBoons() {
+    for (const b of state.boons || []) {
+      const def = BOON_POOL.find(x => x.id === b.id);
+      if (!def?.mods) continue;
+      if (def.mods.maxHp) state.maxHp = Math.max(1, state.maxHp - def.mods.maxHp);
+      if (def.mods.maxMp) state.maxMp = Math.max(1, state.maxMp - def.mods.maxMp);
+    }
+    state.hp = Math.min(state.hp, state.maxHp);
+    state.mp = Math.min(state.mp, state.maxMp);
+  }
+
   _updateChapterComplete(dt) {
     this.chapterComplete.t = (this.chapterComplete.t || 0) + dt;
     const k = this.game.input;
@@ -1248,12 +1278,12 @@ export class GameScene {
     // 左上: HP/MP/资源(整体下移,标签不再贴屏幕顶边)
     const barW = 280, barH = 14, barX = 18, barY = 32;
     uiPanel(ctx, barX - 6, barY - 18, barW + 12, 92, { accent: 'rgba(183,140,224,0.35)' });
-    text(ctx, '生命', barX, barY - 16, 'small', '#d65858');
+    text(ctx, '生命', barX, barY - 16, 'small', '#e87a7a');
     uiBar(ctx, barX, barY, barW, barH, this.player.hp / this.player.maxHp, '#d65858', { ticks: 4 });
-    text(ctx, `${Math.ceil(this.player.hp)}/${this.player.maxHp}`, barX + barW, barY, 'small', '#fff', { align: 'right' });
-    text(ctx, '法力', barX, barY + barH + 4, 'small', '#6c8ee0');
+    text(ctx, `${Math.ceil(this.player.hp)}/${this.player.maxHp}`, barX + barW - 8, barY, 'small', '#fff', { align: 'right' });
+    text(ctx, '法力', barX, barY + barH + 4, 'small', '#8aa6e8');
     uiBar(ctx, barX, barY + barH + 16, barW, barH, state.mp / state.maxMp, '#6c8ee0', { ticks: 4 });
-    text(ctx, `${Math.ceil(state.mp)}/${state.maxMp}`, barX + barW, barY + barH + 16, 'small', '#fff', { align: 'right' });
+    text(ctx, `${Math.ceil(state.mp)}/${state.maxMp}`, barX + barW - 8, barY + barH + 16, 'small', '#fff', { align: 'right' });
     // 经验条(细金条,升级进度一目了然)
     const xpY = barY + barH * 2 + 20;
     uiBar(ctx, barX, xpY, barW, 6, Math.min(1, state.xp / state.xpToNext), '#d8b04a');
@@ -1521,7 +1551,7 @@ export class GameScene {
     if (!this.chapterBoss || !this.chapterBoss.alive || this.battleStarted) return;
     const W = this.game.canvas.width;
     const cx = W / 2, cy = 92;
-    // 目标选择:最近的未收集刻印 → 否则 BOSS
+    // 目标选择:最近的未收集刻印 → 集齐后若有未拾取的秘密(乐谱/纹章等共忆线索)→ 否则 BOSS
     let tx = this.chapterBoss.x, ty = this.chapterBoss.y, label = 'BOSS', color = this.chapterBoss.color;
     const { need, got } = this._sealProgress();
     if (got < need) {
@@ -1536,6 +1566,16 @@ export class GameScene {
         label = '刻印';
         color = '#e0b76a';
       }
+    } else if ((this._secretPickups || []).length > 0) {
+      // 秘密罗盘:消除共忆结局的隐性锁死(错过乐谱的玩家在第二章才知道,却无路标)
+      let best = null, bestD = Infinity;
+      for (const s of this._secretPickups) {
+        const d = Math.hypot(s.x - this.player.x, s.y - this.player.y);
+        if (d < bestD) { bestD = d; best = s; }
+      }
+      tx = best.x; ty = best.y;
+      label = '秘密';
+      color = '#8ad0e0';
     }
     const dx = tx - this.player.x;
     const dy = ty - this.player.y;
