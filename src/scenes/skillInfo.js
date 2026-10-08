@@ -7,6 +7,7 @@ import { state } from '../state.js';
 import { SPRITE_LIB } from '../sprite.js';
 import { SKILL_BASE, CLASS_MODS } from '../data/balance.js';
 import { BOON_POOL } from '../data/boons.js';
+import { MenuNav } from '../menuNav.js';
 
 const PAL_GRAY = '#a9a07e';
 const PAL_GOLD = '#e0b76a';
@@ -62,21 +63,22 @@ export class SkillInfoScene {
     this.game = game;
     this.idx = 0;
     this.t = 0;
+    this.nav = new MenuNav(game);
   }
 
-  enter() { this.t = 0; }
+  enter() { this.t = 0; this.nav.index = 0; this.idx = 0; }
 
   update(dt) {
     this.t += dt;
     const k = this.game.input;
-    const n = SKILL_INFO.length;
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) {
-      this.idx = (this.idx - 1 + n) % n; this.game.audio.sfxHover();
+    // 左列布局参数与 render 一致(指针命中;列表无确认动作,点击仅选中)
+    const listX = 56, listY = 140, lh = 64;
+    for (let i = 0; i < SKILL_INFO.length; i++) {
+      this.nav.hit(i, listX - 10, listY + i * lh - 10, 400, lh - 4);
     }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) {
-      this.idx = (this.idx + 1) % n; this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('Escape') || k.keysJustPressed.has('Backspace')) {
+    this.nav.update();
+    this.idx = this.nav.index;
+    if (k.justPressed('cancel') || k.justPressed('back')) {
       this.game.audio.sfxClick();
       this.game.setScene('game', { _fromSkillInfo: true, chapter: this.game.scenes.game.chapter });
     }
@@ -120,7 +122,7 @@ export class SkillInfoScene {
       const cd = this.effCd(it);
       const costTxt = it.cost == null ? (it.count || '') : (it.cost > 0 ? `耗 ${it.cost} 法力` : '无消耗');
       const cdTxt = cd != null ? ` · 冷却 ${cd.toFixed(cd < 1 ? 2 : 1)}s` : '';
-      text(ctx, costTxt + cdTxt, listX + 88, y + 26, 'small', sel ? PAL_GOLD : '#6f6650');
+      text(ctx, costTxt + cdTxt, listX + 88, y + 26, 'small', sel ? PAL_GOLD : '#8b7f5e');
     }
 
     // 右侧:演示面板(外层定高容器:不同技能描述行数不同,统一边界避免翻页时底边跳动)

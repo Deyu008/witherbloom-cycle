@@ -14,6 +14,7 @@ import { text } from '../pixelfont.js';
 import { state } from '../state.js';
 import { SPRITE_LIB } from '../sprite.js';
 import { applyPurchase } from '../data/shop.js';
+import { MenuNav } from '../menuNav.js';
 
 // 三个转换方向,显示顺序固定
 const CONVERSIONS = [
@@ -29,11 +30,13 @@ export class ConversionScene {
     this.menuIndex = 0;
     this.flashMsg = '';
     this.flashLife = 0;
+    this.nav = new MenuNav(game, { onConfirm: (i) => this._tryConvert(CONVERSIONS[i]) });
   }
 
   enter(opts = {}) {
     this.t = 0;
     this.menuIndex = 0;
+    this.nav.index = 0;
     this.flashMsg = '';
     this.flashLife = 0;
   }
@@ -44,18 +47,14 @@ export class ConversionScene {
     if (this.flashLife <= 0) this.flashMsg = '';
 
     const k = this.game.input;
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) {
-      this.menuIndex = (this.menuIndex - 1 + CONVERSIONS.length) % CONVERSIONS.length;
-      this.game.audio.sfxHover();
+    // 卡片布局参数与 render 一致(指针命中)
+    const cardX = (this.game.canvas.width - 560) / 2, cardY = 250, cardW = 560, cardH = 96, cardGap = 18;
+    for (let i = 0; i < CONVERSIONS.length; i++) {
+      this.nav.hit(i, cardX, cardY + i * (cardH + cardGap), cardW, cardH);
     }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) {
-      this.menuIndex = (this.menuIndex + 1) % CONVERSIONS.length;
-      this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
-      this._tryConvert(CONVERSIONS[this.menuIndex]);
-    }
-    if (k.keysJustPressed.has('Escape')) {
+    this.nav.update();
+    this.menuIndex = this.nav.index;
+    if (k.justPressed('cancel') || k.justPressed('back')) {
       this.game.audio.sfxClick();
       // 返回暂停菜单:和 skillTree 同样的 setScene + _fromConversion 标记模式
       this.game.setScene('game', { _fromConversion: true, chapter: this.game.scenes.game.chapter });

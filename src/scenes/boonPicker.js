@@ -4,6 +4,7 @@
 import { text } from '../pixelfont.js';
 import { state } from '../state.js';
 import { BOON_POOL, BOON_RARITY_INFO, BOON_SKIP_GOLD, drawBoonChoices } from '../data/boons.js';
+import { MenuNav } from '../menuNav.js';
 
 export class BoonPicker {
   constructor(game, scene) {
@@ -11,6 +12,8 @@ export class BoonPicker {
     this.scene = scene;    // GameScene(player / 对话与暂停状态门控)
     this.queue = [];       // 待弹出的祝福(minRarity)
     this.offer = null;     // 当前三选一 { rarity, choices, idx, t }
+    // 统一导航:←→(手柄/键盘)+ 鼠标/触屏点卡直接选;S 跳过保留
+    this.nav = new MenuNav(game, { horizontal: true, onConfirm: (i) => this.pick(i) });
   }
 
   enqueue(minRarity = 'common') { this.queue.push(minRarity); }
@@ -26,6 +29,7 @@ export class BoonPicker {
       return;
     }
     this.offer = { rarity, choices, idx: 0, t: 0 };
+    this.nav.index = 0;
     this.game.audio.sfxSecret();
   }
 
@@ -37,11 +41,11 @@ export class BoonPicker {
     for (let i = 0; i < n; i++) {
       if (k.keysJustPressed.has(`Digit${i + 1}`)) return this.pick(i);
     }
-    if (k.keysJustPressed.has('ArrowLeft') || k.keysJustPressed.has('KeyA')) { o.idx = (o.idx - 1 + n) % n; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('ArrowRight') || k.keysJustPressed.has('KeyD')) { o.idx = (o.idx + 1) % n; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) return this.pick(o.idx);
-    if (k.keysJustPressed.has('KeyS') || k.keysJustPressed.has('Escape')) {
-      // 跳过 = +50 金(补偿等价,参考 Hades 跳过换金币)
+    this.nav.index = o.idx;
+    this.nav.update();
+    o.idx = this.nav.index;
+    // S = 跳过(+50 金补偿,参考 Hades 跳过换金币;ESC 走暂停,不绑定跳过)
+    if (k.keysJustPressed.has('KeyS')) {
       state.gold += BOON_SKIP_GOLD;
       this.settlePity(o.rarity);
       this.game.audio.sfxPickup(760);
@@ -95,6 +99,7 @@ export class BoonPicker {
       const x = x0 + i * (cardW + gap);
       const y = 170;
       const sel = i === o.idx;
+      this.nav.hit(i, x, y, cardW, cardH);
       const col = BOON_RARITY_INFO[def.rarity].color;
       const owned = state.boons.filter(b => b.id === def.id).length;
       ctx.fillStyle = sel ? 'rgba(30,22,54,0.98)' : 'rgba(18,14,32,0.95)';
@@ -124,6 +129,6 @@ export class BoonPicker {
         x + cardW / 2, y + cardH - 30, 'small', owned > 0 ? '#e0b76a' : '#8b7f5e', { align: 'center' });
     }
     // 操作提示放在卡片正下方(y520):H-46 会压到底部技能栏的残影上
-    text(ctx, `1/2/3 或 ←→+ENTER 选择 · S 跳过(+${BOON_SKIP_GOLD} 金)`, W / 2, 520, 'small', '#a9a07e', { align: 'center' });
+    text(ctx, `1/2/3 或 ←→+ENTER 选择 · S 跳过(+${BOON_SKIP_GOLD} 金) · ESC 暂停`, W / 2, 520, 'small', '#a9a07e', { align: 'center' });
   }
 }

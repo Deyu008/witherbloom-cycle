@@ -2,33 +2,42 @@
 import { text, FONT } from '../pixelfont.js';
 import { state } from '../state.js';
 import { CHAPTERS } from '../data/chapters.js';
+import { MenuNav } from '../menuNav.js';
 
 export class ChapterSelectScene {
-  constructor(game) { this.game = game; this.t = 0; this.index = 0; }
+  constructor(game) {
+    this.game = game; this.t = 0; this.index = 0;
+    // 横排菜单:←→ 步进(统一回绕;锁定章跳过)
+    this.nav = new MenuNav(game, { horizontal: true, onConfirm: (i) => this._confirm(i) });
+  }
 
-  enter() { this.t = 0; this.index = 0; }
+  enter() { this.t = 0; this.index = 0; this.nav.index = 0; }
+
+  _confirm(i) {
+    const ch = CHAPTERS[i];
+    if (!ch) return;
+    if (state.unlockedChapters.includes(ch.id)) {
+      this.game.audio.sfxChapter();
+      this.game.goto('chapterIntro', { chapter: ch.id });
+    } else {
+      this.game.audio.sfxClick();
+    }
+  }
 
   update(dt) {
     this.t += dt;
     const k = this.game.input;
-    if (k.keysJustPressed.has('ArrowLeft') || k.keysJustPressed.has('KeyA')) {
-      this.index = Math.max(0, this.index - 1);
-      this.game.audio.sfxHover();
+    // 布局参数与 render 一致(登记命中矩形供指针)
+    const cardW = 240, cardH = 360, gap = 30;
+    const totalW = CHAPTERS.length * cardW + (CHAPTERS.length - 1) * gap;
+    const startX = (this.game.canvas.width - totalW) / 2;
+    for (let i = 0; i < CHAPTERS.length; i++) {
+      this.nav.hit(i, startX + i * (cardW + gap), 140, cardW, cardH,
+        state.unlockedChapters.includes(CHAPTERS[i].id));
     }
-    if (k.keysJustPressed.has('ArrowRight') || k.keysJustPressed.has('KeyD')) {
-      this.index = Math.min(CHAPTERS.length - 1, this.index + 1);
-      this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
-      const ch = CHAPTERS[this.index];
-      if (state.unlockedChapters.includes(ch.id)) {
-        this.game.audio.sfxChapter();
-        this.game.goto('chapterIntro', { chapter: ch.id });
-      } else {
-        this.game.audio.sfxClick();
-      }
-    }
-    if (k.keysJustPressed.has('Escape') || k.keysJustPressed.has('Backspace')) {
+    this.nav.update();
+    this.index = this.nav.index;
+    if (k.justPressed('cancel') || k.justPressed('back')) {
       this.game.audio.sfxClick();
       this.game.goto('title');
     }

@@ -10,6 +10,7 @@
 import { text } from '../pixelfont.js';
 import { state } from '../state.js';
 import { ICON_SKILL } from '../sprite.js';
+import { MenuNav } from '../menuNav.js';
 
 // 节点显示顺序(锁定时也能展示,鼓励解锁)
 const NODE_ORDER = ['slash', 'dash', 'recall', 'shield', 'echo', 'heal'];
@@ -35,11 +36,13 @@ export class SkillTreeScene {
     this.menuIndex = 0;
     this.flashMsg = '';       // 短暂提示(碎片不足 等)
     this.flashLife = 0;
+    this.nav = new MenuNav(game, { onConfirm: (i) => this._tryUpgrade(NODE_ORDER[i]) });
   }
 
   enter(opts = {}) {
     this.t = 0;
     this.menuIndex = 0;
+    this.nav.index = 0;
     this.flashMsg = '';
     this.flashLife = 0;
   }
@@ -50,18 +53,17 @@ export class SkillTreeScene {
     if (this.flashLife <= 0) this.flashMsg = '';
 
     const k = this.game.input;
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) {
-      this.menuIndex = (this.menuIndex - 1 + NODE_ORDER.length) % NODE_ORDER.length;
-      this.game.audio.sfxHover();
+    // 2 列网格布局参数与 render 一致(指针命中)
+    const cols = 2, cellW = 380, cellH = 142, gapX = 30, gapY = 22;
+    const totalW = cols * cellW + (cols - 1) * gapX;
+    const startX = (this.game.canvas.width - totalW) / 2, startY = 204;
+    for (let i = 0; i < NODE_ORDER.length; i++) {
+      const col = i % cols, row = Math.floor(i / cols);
+      this.nav.hit(i, startX + col * (cellW + gapX), startY + row * (cellH + gapY), cellW, cellH);
     }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) {
-      this.menuIndex = (this.menuIndex + 1) % NODE_ORDER.length;
-      this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
-      this._tryUpgrade(NODE_ORDER[this.menuIndex]);
-    }
-    if (k.keysJustPressed.has('Escape')) {
+    this.nav.update();
+    this.menuIndex = this.nav.index;
+    if (k.justPressed('cancel') || k.justPressed('back')) {
       this.game.audio.sfxClick();
       // 返回暂停菜单:用 setScene(无淡入淡出)直达 game 场景,enter() 会识别 _fromSkillTree
       this.game.setScene('game', { _fromSkillTree: true, chapter: this.game.scenes.game.chapter });
@@ -186,7 +188,7 @@ export class SkillTreeScene {
     }
 
     // 名称(large 30px 收进 y14..44,与下方描述留出间隙)
-    const textColor = selected ? '#f4ecd0' : (affordable ? '#d6c8a4' : '#7a6f5a');
+    const textColor = selected ? '#f4ecd0' : (affordable ? '#d6c8a4' : '#8b7f5e');
     text(ctx, sk.name, x + 80, y + 14, 'large', textColor);
 
     // 等级 (右对齐)
@@ -198,7 +200,7 @@ export class SkillTreeScene {
 
     // 冷却
     const cdLabel = `冷却 ${sk.cooldown.toFixed(2)}s`;
-    text(ctx, cdLabel, x + 80, y + 72, 'small', '#7a6f5a');
+    text(ctx, cdLabel, x + 80, y + 72, 'small', '#8b7f5e');
 
     // 升级按钮 / 状态文字
     let btnText, btnColor;
@@ -206,11 +208,11 @@ export class SkillTreeScene {
       btnText = '已至最高';
       btnColor = '#e0b76a';
     } else if (locked) {
-      btnText = `解锁 · ${cost} 碎片`;
-      btnColor = affordable ? '#b78ce0' : '#5a4a6a';
+      btnText = (affordable ? '解锁' : '✕ 碎片不足') + ` · ${cost} 碎片`;
+      btnColor = affordable ? '#b78ce0' : '#8b7f5e';
     } else {
-      btnText = `升级 Lv${sk.level + 1} · ${cost} 碎片`;
-      btnColor = affordable ? '#b78ce0' : '#5a4a6a';
+      btnText = (affordable ? `升级 Lv${sk.level + 1}` : `✕ 升级 Lv${sk.level + 1}`) + ` · ${cost} 碎片`;
+      btnColor = affordable ? '#b78ce0' : '#8b7f5e';
     }
     text(ctx, btnText, x + 80, y + 98, 'medium', btnColor);
 

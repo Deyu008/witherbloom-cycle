@@ -2,6 +2,7 @@
 import { text } from '../pixelfont.js';
 import { state, freshState } from '../state.js';
 import { SPRITE_LIB } from '../sprite.js';
+import { MenuNav } from '../menuNav.js';
 
 // 基础数值(必须与 state.freshState() 默认对齐)
 const BASE_HP = 100;
@@ -83,45 +84,38 @@ export class ClassSelectScene {
     this.t = 0;
     this.menuIndex = 0;
     this.menuItems = CLASSES;
+    // 卡片式三选一:四方向都步进(模 3 环绕);指针点击卡片即选中并确认
+    this.nav = new MenuNav(game, { both: true, onConfirm: () => this._confirm() });
   }
 
   enter(opts) {
     this.t = 0;
     this.menuIndex = 0;
+    this.nav.index = 0;
     this._opts = opts || {};
   }
 
   update(dt) {
     this.t += dt;
     const k = this.game.input;
-    const n = this.menuItems.length;
-    if (k.keysJustPressed.has('ArrowLeft') || k.keysJustPressed.has('KeyA')) {
-      this.menuIndex = (this.menuIndex - 1 + n) % n;
-      this.game.audio.sfxHover();
+    // 卡片布局参数与 render 一致
+    const cardW = 240, cardH = 440, gap = 30;
+    const totalW = this.menuItems.length * cardW + (this.menuItems.length - 1) * gap;
+    const startX = (this.game.canvas.width - totalW) / 2;
+    for (let i = 0; i < this.menuItems.length; i++) {
+      this.nav.hit(i, startX + i * (cardW + gap), 140, cardW, cardH);
     }
-    if (k.keysJustPressed.has('ArrowRight') || k.keysJustPressed.has('KeyD')) {
-      this.menuIndex = (this.menuIndex + 1) % n;
-      this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) {
-      this.menuIndex = (this.menuIndex - 1 + n) % n;
-      this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) {
-      this.menuIndex = (this.menuIndex + 1) % n;
-      this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space') || k.mouseJustClicked) {
-      this._confirm();
-    }
-    if (k.keysJustPressed.has('Escape') || k.keysJustPressed.has('Backspace')) {
+    this.nav.update();
+    this.menuIndex = this.nav.index;
+    if (k.justPressed('cancel') || k.justPressed('back')) {
       this.game.audio.sfxClick();
       this.game.goto('title');
     }
   }
 
   _confirm() {
-    const item = this.menuItems[this.menuIndex];
+    // nav.onConfirm 在 update 内触发,此时 menuIndex 尚未回写 —— 读 nav.index
+    const item = this.menuItems[this.nav.index] || this.menuItems[this.menuIndex];
     if (!item) return;
     this.game.audio.sfxClick();
     if (this._opts.isNewGame) {
@@ -174,7 +168,7 @@ export class ClassSelectScene {
       text(ctx, '← → 切换    ENTER 选择    ESC 返回', W / 2, H - 40, 'small', '#a8945a', { align: 'center' });
       ctx.globalAlpha = 1;
     }
-    text(ctx, '技能全职业通用,数值随倾向变化 · 入局后 ESC → 技能图鉴 看说明与演示', W / 2, H - 66, 'small', '#6f6650', { align: 'center' });
+    text(ctx, '技能全职业通用,数值随倾向变化 · 入局后 ESC → 技能图鉴 看说明与演示', W / 2, H - 66, 'small', '#8b7f5e', { align: 'center' });
   }
 
   _drawCard(ctx, x, y, w, h, item, selected) {

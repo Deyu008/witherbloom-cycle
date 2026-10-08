@@ -16,6 +16,7 @@ import { SIDE_ROOMS } from '../data/zones.js';
 import { SkillTreeScene } from './skillTree.js';
 import { ConversionScene } from './conversion.js';
 import { SkillInfoScene } from './skillInfo.js';
+import { MenuNav } from '../menuNav.js';
 
 const ENEMY_PRESETS = {
   1: ['forest_spirit', 'moss_lurker', 'vine_wraith'],
@@ -214,6 +215,7 @@ export class GameScene {
 
   showChapterComplete() {
     if (this.chapter >= 4) return;
+    this._getCompleteNav().index = 0;
     this.chapterComplete = { idx: 0, t: 0 };
     this.game.audio.sfxChapter();
     this._autosave(); // 通关节点必存档
@@ -1079,23 +1081,24 @@ export class GameScene {
     state.mp = Math.min(state.mp, state.maxMp);
   }
 
+  _getCompleteNav() {
+    if (!this._ccNav) {
+      this._ccNav = new MenuNav(this.game, { onConfirm: (i) => {
+        const items = this._chapterCompleteItems();
+        const action = items[i]?.action;
+        this.game.audio.sfxClick();
+        this.chapterComplete = null;
+        action?.();
+      }});
+    }
+    return this._ccNav;
+  }
+
   _updateChapterComplete(dt) {
     this.chapterComplete.t = (this.chapterComplete.t || 0) + dt;
-    const k = this.game.input;
-    const items = this._chapterCompleteItems();
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) {
-      this.chapterComplete.idx = (this.chapterComplete.idx - 1 + items.length) % items.length; this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) {
-      this.chapterComplete.idx = (this.chapterComplete.idx + 1) % items.length; this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
-      this.game.audio.sfxClick();
-      const action = items[this.chapterComplete.idx].action;
-      this.chapterComplete = null;
-      action();
-    }
-    if (k.keysJustPressed.has('Escape')) { this.chapterComplete = null; }
+    this._getCompleteNav().update();
+    this.chapterComplete.idx = this._ccNav.index;
+    if (this.game.input.justPressed('cancel')) { this.chapterComplete = null; }
   }
 
   _chapterCompleteItems() {
@@ -1111,10 +1114,24 @@ export class GameScene {
     ];
   }
 
+  // 暂停菜单导航(统一 MenuNav:键盘/手柄/鼠标/触屏)
+  _getPauseNav() {
+    if (!this._pauseNav) {
+      this._pauseNav = new MenuNav(this.game, { onConfirm: (i) => this._pauseConfirm(i) });
+    }
+    return this._pauseNav;
+  }
+  _pauseConfirm(i) {
+    const it = this.pauseItems[i];
+    if (!it) return;
+    if (it.action) { this.game.audio.sfxClick(); it.action(); }
+    else if (it.adjust) { this.game.audio.sfxClick(); it.adjust(1); } // 音量项确认 = 升一档
+  }
+
   _togglePause() {
     this.paused = !this.paused;
     if (this.paused) {
-      this.pauseIndex = 0;
+      this._getPauseNav().index = 0;
       this.pauseItems = [
         { text: '继续游戏', action: () => { this.paused = false; } },
         { text: '技能图鉴 · 说明与演示', action: () => {
@@ -1127,7 +1144,7 @@ export class GameScene {
           if (!this.game.scenes.skillTree) this.game.scenes.skillTree = new SkillTreeScene(this.game);
           this.game.goto('skillTree');
         }},
-        { text: '回响日志(记忆)', action: () => { this.paused = false; this.echoLogOpen = true; this.echoIdx = 0; this.echoDetail = false; } },
+        { text: '回响日志(记忆)', action: () => { this.paused = false; this.echoLogOpen = true; this.echoIdx = 0; if (this._echoNav) this._echoNav.index = 0; this.echoDetail = false; } },
         { text: '资源转换 (2:1 损耗)', action: () => {
           this.paused = false;
           if (!this.game.scenes.conversion) this.game.scenes.conversion = new ConversionScene(this.game);
@@ -1156,16 +1173,13 @@ export class GameScene {
   }
   _updatePauseMenu(dt) {
     const k = this.game.input;
-    if (k.justPressed('navUp')) { this.pauseIndex = (this.pauseIndex - 1 + this.pauseItems.length) % this.pauseItems.length; this.game.audio.sfxHover(); }
-    if (k.justPressed('navDown')) { this.pauseIndex = (this.pauseIndex + 1) % this.pauseItems.length; this.game.audio.sfxHover(); }
-    if (k.justPressed('navLeft') || k.justPressed('navRight')) {
-      const it = this.pauseItems[this.pauseIndex];
-      if (it.adjust) { it.adjust(k.justPressed('navRight') ? 1 : -1); this.game.audio.sfxHover(); }
-    }
-    if (k.justPressed('confirm')) {
-      const it = this.pauseItems[this.pauseIndex];
-      if (it.action) { this.game.audio.sfxClick(); it.action(); }
-      else if (it.adjust) { this.game.audio.sfxClick(); it.adjust(1); } // 音量项 ENTER = 升一档
+    const nav = this._getPauseNav();
+    nav.update();
+    // ←→ 留给音量档位调节(纵向菜单不消费横向键)
+    const it = this.pauseItems[nav.index];
+    if (it && it.adjust && (k.justPressed('navLeft') || k.justPressed('navRight'))) {
+      it.adjust(k.justPressed('navRight') ? 1 : -1);
+      this.game.audio.sfxHover();
     }
   }
 
@@ -1336,6 +1350,7 @@ export class GameScene {
     for (let i = 0; i < items.length; i++) {
       const sel = i === this.chapterComplete.idx;
       const y = by + 230 + i * 50;
+      this._getCompleteNav().hit(i, bx + 30, y - 6, bw - 60, 42);
       if (sel) { ctx.fillStyle = 'rgba(183,140,224,0.18)'; ctx.fillRect(bx + 30, y - 6, bw - 60, 42); }
       text(ctx, (sel ? '▶ ' : '  ') + items[i].text, W / 2, y, sel ? 'medium' : 'small', sel ? '#f4ecd0' : '#a9a07e', { align: 'center' });
     }
@@ -1417,7 +1432,7 @@ export class GameScene {
       ctx.strokeStyle = col; ctx.lineWidth = 1.5;
       ctx.strokeRect(bx0 + 0.5, resY - 1.5, 21, 21);
       text(ctx, def.name[def.name.indexOf('·') >= 0 ? def.name.indexOf('·') + 1 : 0] || '祝',
-        bx0 + 11, resY + 2, 14, col, { align: 'center' });
+        bx0 + 11, resY + 2, 16, col, { align: 'center' });
       bx0 += 26;
     }
 
@@ -1813,6 +1828,7 @@ export class GameScene {
     ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0, 0, W, H);
     // 中央面板容器(菜单与背景彻底隔离,不再依赖暗层程度)
     // 行距随条目数自适应:菜单项增多(音量/无障碍)也不超出 720 逻辑高
+    const navIdx = this._getPauseNav().index;
     const rowH = this.pauseItems.length > 10 ? 34 : 50;
     const selH = rowH === 34 ? 28 : 38;
     const pw = 560, ph = 96 + this.pauseItems.length * rowH + 56;
@@ -1821,8 +1837,9 @@ export class GameScene {
     text(ctx, '暂 停', W / 2, py0 + 30, 'title', '#f4ecd0', { align: 'center' });
     const listY = py0 + 96;
     for (let i = 0; i < this.pauseItems.length; i++) {
-      const sel = i === this.pauseIndex;
+      const sel = i === navIdx;
       const y = listY + i * rowH;
+      this._getPauseNav().hit(i, px0 + 24, y - selH / 2, pw - 48, selH);
       if (sel) {
         ctx.fillStyle = 'rgba(183,140,224,0.18)';
         ctx.fillRect(px0 + 24, y - selH / 2, pw - 48, selH);
@@ -1836,18 +1853,26 @@ export class GameScene {
   }
 
   // ===== 回响日志(碎片化叙事回看)=====
+  _getEchoNav() {
+    if (!this._echoNav) {
+      this._echoNav = new MenuNav(this.game, { onConfirm: () => {
+        this.echoDetail = !this.echoDetail; this.game.audio.sfxClick();
+      }});
+    }
+    return this._echoNav;
+  }
+
   _updateEchoLog(dt) {
     const k = this.game.input;
     const list = this._echoList();
     if (list.length === 0) {
-      if (k.keysJustPressed.has('Escape')) { this.echoLogOpen = false; this.game.audio.sfxClick(); }
+      if (k.justPressed('cancel')) { this.echoLogOpen = false; this.game.audio.sfxClick(); }
       return;
     }
     if (this.echoIdx >= list.length) this.echoIdx = 0;
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) { this.echoIdx = (this.echoIdx - 1 + list.length) % list.length; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) { this.echoIdx = (this.echoIdx + 1) % list.length; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) { this.echoDetail = !this.echoDetail; this.game.audio.sfxClick(); }
-    if (k.keysJustPressed.has('Escape')) { this.echoLogOpen = false; this.game.audio.sfxClick(); }
+    this._getEchoNav().update();
+    this.echoIdx = this._echoNav.index;
+    if (k.justPressed('cancel')) { this.echoLogOpen = false; this.game.audio.sfxClick(); }
   }
 
   _echoList() {
@@ -1871,6 +1896,7 @@ export class GameScene {
     for (let i = 0; i < list.length; i++) {
       const sel = i === this.echoIdx;
       const y = listY + i * lh;
+      this._getEchoNav().hit(i, colX - 10, y - 8, 440, lh);
       if (sel) { ctx.fillStyle = 'rgba(183,140,224,0.16)'; ctx.fillRect(colX - 10, y - 8, 440, lh); }
       text(ctx, (sel ? '▶ ' : '  ') + list[i].title, colX, y, sel ? 'medium' : 'small', sel ? '#f4ecd0' : '#a9a07e');
     }

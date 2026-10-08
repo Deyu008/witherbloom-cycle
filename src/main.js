@@ -14,10 +14,16 @@ function setBoot(pct, msg) {
 }
 
 // 自适应缩放:canvas 逻辑分辨率固定 1280×720,按视口等比 contain 缩放(仅改 CSS 尺寸),
-// 配合 image-rendering: pixelated 保持像素清晰。修复小屏看不到画面边缘的问题。
+// 配合 image-rendering: pixelated 保持像素清晰。
+// 像素稳定:≥1 时取整数倍(避免最近邻采样造成像素宽窄交替/移动闪烁);
+// 小窗(手机)允许 0.5 步进,保证不至于太小。可用区从 #stage-inner 读(扣掉 safe-area 内边距)。
 function resizeCanvas() {
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const scale = Math.min(vw / canvas.width, vh / canvas.height);
+  const box = document.getElementById('stage-inner');
+  const vw = (box ? box.clientWidth : window.innerWidth) || window.innerWidth;
+  const vh = (box ? box.clientHeight : window.innerHeight) || window.innerHeight;
+  let scale = Math.min(vw / canvas.width, vh / canvas.height);
+  if (scale >= 1) scale = Math.max(1, Math.floor(scale));
+  else scale = Math.max(0.25, Math.floor(scale * 2) / 2);
   canvas.style.width = (canvas.width * scale) + 'px';
   canvas.style.height = (canvas.height * scale) + 'px';
 }

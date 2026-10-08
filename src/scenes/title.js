@@ -2,6 +2,7 @@
 import { drawText, text, FONT, textWidth } from '../pixelfont.js';
 import { PAL } from '../palette.js';
 import { applySave } from '../state.js';
+import { MenuNav } from '../menuNav.js';
 
 const CLASS_NAMES = { recall: '追忆者', forge: '锻体者', weave: '织梦者' };
 
@@ -18,11 +19,21 @@ export class TitleScene {
     ];
     this.bg = null;
     this.confirmNewGame = false; // 新游戏二次确认态(有存档时)
+    this.nav = new MenuNav(game, { onConfirm: (i) => this._confirm(i) });
+  }
+
+  _confirm(i) {
+    const it = this.menuItems[i];
+    if (!it) return;
+    if (it.text === '继续游戏' && !this._hasSave()) { this.game.audio.sfxClick(); return; } // 灰显双保险
+    this.game.audio.sfxClick();
+    it.action();
   }
 
   enter(opts) {
     this.t = 0;
     this.menuIndex = 0;
+    this.nav.index = 0;
     this.confirmNewGame = false;
     this.game.audio.init();
     this.game.audio.startMusic(0, 'title');
@@ -67,31 +78,19 @@ export class TitleScene {
     this.t += dt;
     const k = this.game.input;
     if (this.confirmNewGame) {
-      if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
+      if (k.justPressed('confirm')) {
         this.confirmNewGame = false;
         this.newGame(); // 已确认,直接执行
-      } else if (k.keysJustPressed.has('Escape')) {
+      } else if (k.justPressed('cancel') || k.justPressed('back')) {
         this.confirmNewGame = false;
         this.game.audio.sfxClick();
       }
       return; // 确认期间锁菜单导航
     }
-    // 导航跳过灰显项(无存档时的"继续游戏")
-    const enabled = (i) => !(this.menuItems[i].text === '继续游戏' && !this._hasSave());
-    const step = (dir) => {
-      for (let s = 1; s <= this.menuItems.length; s++) {
-        const i = (this.menuIndex + dir * s + this.menuItems.length * s) % this.menuItems.length;
-        if (enabled(i)) { this.menuIndex = i; this.game.audio.sfxHover(); return; }
-      }
-    };
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) step(-1);
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) step(1);
-    // 仅键盘确认:鼠标点击不做"任意处确认"——否则误触会直接执行
-    // 当前选中项(如"开始新游戏"),有清掉存档的风险。
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
-      this.game.audio.sfxClick();
-      this.menuItems[this.menuIndex].action();
-    }
+    // 统一导航:键盘步进跳过灰显项;鼠标 hover/点击限定在菜单矩形内(任意处点击不再误触)
+    this.menuIndex = this.nav.index;
+    this.nav.update();
+    this.menuIndex = this.nav.index;
   }
 
   render(ctx) {
@@ -172,6 +171,7 @@ export class TitleScene {
         ctx.fillRect(W/2 + 212, y - 8, 8, 8);
       }
       const c = disabled ? '#4a4356' : (selected ? '#f4ecd0' : '#a8945a');
+      this.nav.hit(i, W / 2 - 200, y - 8, 400, 40, !disabled);
       text(ctx, disabled ? '继续游戏(无存档)' : item.text, W / 2, y, 'large', c, {
         align: 'center',
         shadowColor: selected ? '#5a3a8a' : '#3a2a1a',

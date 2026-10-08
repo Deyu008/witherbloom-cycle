@@ -4,6 +4,7 @@ import { text } from '../pixelfont.js';
 import { state } from '../state.js';
 import { SPRITE_LIB } from '../sprite.js';
 import { SHOP_ITEMS, buyItem, applyPurchase } from '../data/shop.js';
+import { MenuNav } from '../menuNav.js';
 
 export class ShopScene {
   constructor(game) {
@@ -12,9 +13,10 @@ export class ShopScene {
     this.menuIndex = 0;
     this.flashMsg = '';
     this.flashLife = 0;
+    this.nav = new MenuNav(game, { onConfirm: (i) => this._tryBuy(SHOP_ITEMS[i]) });
   }
 
-  enter() { this.t = 0; this.menuIndex = 0; this.flashMsg = ''; this.flashLife = 0; }
+  enter() { this.t = 0; this.menuIndex = 0; this.nav.index = 0; this.flashMsg = ''; this.flashLife = 0; }
 
   update(dt) {
     this.t += dt;
@@ -22,18 +24,14 @@ export class ShopScene {
     if (this.flashLife <= 0) this.flashMsg = '';
 
     const k = this.game.input;
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) {
-      this.menuIndex = (this.menuIndex - 1 + SHOP_ITEMS.length) % SHOP_ITEMS.length;
-      this.game.audio.sfxHover();
+    // 货架布局参数与 render 一致(指针命中)
+    const cardX = (this.game.canvas.width - 620) / 2, cardW = 620, cardH = 88, gap = 14, cardY = 210;
+    for (let i = 0; i < SHOP_ITEMS.length; i++) {
+      this.nav.hit(i, cardX, cardY + i * (cardH + gap), cardW, cardH);
     }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) {
-      this.menuIndex = (this.menuIndex + 1) % SHOP_ITEMS.length;
-      this.game.audio.sfxHover();
-    }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) {
-      this._tryBuy(SHOP_ITEMS[this.menuIndex]);
-    }
-    if (k.keysJustPressed.has('Escape')) {
+    this.nav.update();
+    this.menuIndex = this.nav.index;
+    if (k.justPressed('cancel') || k.justPressed('back')) {
       this.game.audio.sfxClick();
       this.game.setScene('game', { _fromShop: true, chapter: this.game.scenes.game.chapter });
     }
@@ -91,7 +89,7 @@ export class ShopScene {
       }
       const icon = SPRITE_LIB.icons[it.icon];
       if (icon) ctx.drawImage(icon, cardX + 20, y + (cardH - icon.height) / 2);
-      text(ctx, it.name, cardX + 86, y + 14, 'large', affordable ? '#f4ecd0' : '#7a6f5a');
+      text(ctx, (affordable ? '' : '✕ ') + it.name, cardX + 86, y + 14, 'large', affordable ? '#f4ecd0' : '#8b7f5e');
       text(ctx, it.desc, cardX + 86, y + 52, 'small', '#8b7f5e');
       // 价格(右对齐;买不起标红)
       text(ctx, `${it.price} 金`, cardX + cardW - 20, y + (cardH - 22) / 2, 'medium',
