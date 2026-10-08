@@ -599,9 +599,9 @@ export class GameScene {
     };
     if (stage === 0 && this._tutorialT > 1.2) hint('WASD 移动');
     else if (stage === 1 && (Math.abs(p.vx) > 1 || Math.abs(p.vy) > 1)) hint('J 攻击 · 连续命中提升伤害!');
-    else if (stage === 2 && this.game.input.keysJustPressed.has('KeyJ')) hint('SPACE 闪避 · 穿过攻击触发完美闪避!');
-    else if (stage === 3 && this.game.input.keysJustPressed.has('Space')) hint('T 交谈 · ESC 暂停里有技能图鉴与演示');
-    else if (stage === 4 && this.game.input.keysJustPressed.has('KeyT')) hint('收集金光刻印,唤醒BOSS前先变强');
+    else if (stage === 2 && this.game.input.justPressed('attack')) hint('SPACE 闪避 · 穿过攻击触发完美闪避!');
+    else if (stage === 3 && this.game.input.justPressed('dash')) hint('T 交谈 · ESC 暂停里有技能图鉴与演示');
+    else if (stage === 4 && this.game.input.justPressed('interact')) hint('收集金光刻印,唤醒BOSS前先变强');
     else if (stage >= 5) this._tutorialDone = true;
   }
 
@@ -623,7 +623,7 @@ export class GameScene {
       this._autosave();
     }
     if (this._saveToast > 0) this._saveToast -= dt;
-    if (this.game.input.keysJustPressed.has('KeyM')) {
+    if (this.game.input.justPressed('mute')) {
       const m = !this.game.audio.muted;
       this.game.audio.setMute(m);
       this.game.spawnFloatText(this.player?.x || 0, (this.player?.y || 0) - 30, m ? '已静音' : '声音已开', '#d6c8a4');
@@ -641,12 +641,12 @@ export class GameScene {
       }
       return;
     }
-    if (!this.paused && (this.game.input.keysJustPressed.has('Slash') || this.game.input.keysJustPressed.has('KeyH'))) {
+    if (!this.paused && this.game.input.justPressed('help')) {
       this.helpOpen = !this.helpOpen; this.game.audio.sfxClick(); return;
     }
     if (this.helpOpen) {
       // 帮助层内 ESC 也可关闭(此前提示写了 ESC 但 Escape 分支在此之后,永远到不了)
-      if (this.game.input.keysJustPressed.has('Escape')) { this.helpOpen = false; this.game.audio.sfxClick(); }
+      if (this.game.input.justPressed('cancel')) { this.helpOpen = false; this.game.audio.sfxClick(); }
       return;
     }
     if (this.echoLogOpen) { this._updateEchoLog(dt); return; }
@@ -658,11 +658,11 @@ export class GameScene {
       this.showChapterComplete();
     }
     if (this.chapterComplete) { this._updateChapterComplete(dt); return; }
-    if (cleared && this.chapter < 4 && !this.paused && this.game.input.keysJustPressed.has('KeyN')) {
+    if (cleared && this.chapter < 4 && !this.paused && this.game.input.justPressed('next')) {
       this.showChapterComplete();
     }
 
-    if (this.game.input.keysJustPressed.has('Escape')) { this._togglePause(); return; }
+    if (this.game.input.justPressed('cancel')) { this._togglePause(); return; }
     if (this.paused) { this._updatePauseMenu(dt); return; }
 
     // 回响祝福三选一:冻结世界,等玩家决策(所有菜单关闭后才弹出)
@@ -714,7 +714,7 @@ export class GameScene {
     // 用 _renderReleasePrompt 控制 HUD 闪烁提示。
     if (this.chapterBoss && this.chapterBoss.alive && this.chapterBoss.canRelease()) {
       this._renderReleasePrompt = true;
-      if (this.game.input.keysJustPressed.has('KeyV')) {
+      if (this.game.input.justPressed('release')) {
         this.chapterBoss._releasePrompted = true; // 锁住,防止同帧重复派发
         const dialogId = (this.chapter === 1) ? 'forest_keeper_question'
           : (this.chapter === 2) ? 'burning_daughter_lullaby'
@@ -849,7 +849,7 @@ export class GameScene {
       const d = Math.hypot(this.player.x - n.x, this.player.y - n.y);
       if (d < bestD) { bestD = d; this._nearbyNpc = n; }
     }
-    if (this._nearbyNpc && this.game.input.keysJustPressed.has('KeyT')) {
+    if (this._nearbyNpc && this.game.input.justPressed('interact')) {
       if (this._nearbyNpc.shop) {
         // 游商:不进对话树,直接开货架
         this.game.audio.sfxClick();
@@ -865,7 +865,7 @@ export class GameScene {
       const d = Math.hypot(this.player.x - sh.x, this.player.y - sh.y);
       if (d < 46) { this._nearbyShrine = sh; break; }
     }
-    if (this._nearbyShrine && this.game.input.keysJustPressed.has('KeyT')) {
+    if (this._nearbyShrine && this.game.input.justPressed('interact')) {
       const sh = this._nearbyShrine;
       state.flags[sh.key] = true;
       this.player.heal(40);

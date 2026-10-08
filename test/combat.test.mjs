@@ -115,6 +115,34 @@ player.hp = 50; player._perfectDodgeCd = 99; // 屏蔽完美闪避干扰
 player.takeDamage(3, 0, 0);
 check('受击清空连击链', game.comboCount === 0);
 
+console.log('\n=== 输入:预输入缓冲 / 连击打断特效 ===');
+game.audio = new Proxy({}, { get: () => () => {} }); // 任意音效方法安全 no-op
+const p2 = new Player(0, 0, { game, world: { entities: [], projectiles: [], loot: [] } });
+p2.game = game;
+p2.hp = 999999; p2.maxHp = 999999; state.hp = 999999;
+// 攻击预输入:冷却尾段按下 → 缓冲 → 冷却转好一瞬自动触发
+p2.attackCd = 0.3; p2.attackTime = 0;
+game.input.keysJustPressed.add('KeyJ');
+p2.update(0.016, game);
+check('冷却尾段按下进入缓冲(不丢弃)', p2._atkBuf > 0 && p2.attackTime === 0);
+game.input.endFrame();
+p2.attackCd = 0.004;
+p2.update(0.016, game);
+check('缓冲在冷却转好一瞬触发攻击', p2.attackTime > 0);
+check('触发后缓冲清空', p2._atkBuf === 0);
+// 闪避预输入
+p2.dashCd = 0.2; p2.attackTime = 0;
+game.input.keysJustPressed.add('Space');
+p2.update(0.016, game);
+game.input.endFrame();
+check('闪避同样进入缓冲', p2._dashBuf > 0);
+// 连击打断特效(此前 _breakComboFx 从未定义,调用恒被静默跳过)
+const { GameScene } = await import(url('src/scenes/game.js'));
+const gs = new GameScene(game);
+gs.player = p2;
+gs._breakComboFx(7);
+check('打断特效生成中断浮字', (game._floatTexts || []).some(f => String(f.text).includes('中断')));
+
 console.log('\n=== 职业外观:三种建模必须不同 ===');
 const { heroGridFor } = await import(url('src/sprites/hero.js'));
 const { SPRITE_LIB } = await import(url('src/sprite.js'));

@@ -168,6 +168,7 @@ export class Game {
       }
       return; // 过渡中不更新场景
     }
+    this.input.pollGamepads(); // 手柄 → 键码注入(菜单/玩法即刻可用)
     this.current?.update(sdt);
     this.particles.update(sdt);
     this.ambient.update(dt);

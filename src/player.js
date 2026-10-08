@@ -180,24 +180,36 @@ export class Player extends Entity {
     }
 
     // 操作(资源/冷却不足时给明确的拒绝反馈,不再默默无响应)
-    if ((k.mouseJustClicked || k.keysJustPressed.has('KeyJ')) && this.attackCd <= 0) this._doAttack(game);
-    if (k.keysJustPressed.has('Space') && this.dashCd <= 0) this._doDash(game);
-    if (k.keysJustPressed.has('KeyQ')) {
+    // 攻击/闪避带预输入缓冲:冷却尾段(≤0.12s)的按下不丢弃,就绪一瞬自动触发
+    if (k.mouseJustClicked || k.justPressed('attack')) {
+      if (this.attackCd <= 0) this._doAttack(game);
+      else this._atkBuf = 0.12;
+    }
+    if (k.justPressed('dash')) {
+      if (this.dashCd <= 0) this._doDash(game);
+      else this._dashBuf = 0.12;
+    }
+    if (k.justPressed('skillQ')) {
       if (this.skillRecallCd <= 0 && state.mp >= 12) this._doRecall(game);
       else this._deny(game, state.mp < 12 ? 'mp' : 'cd');
     }
-    if (k.keysJustPressed.has('KeyE')) {
+    if (k.justPressed('skillE')) {
       if (this.skillShieldCd <= 0 && state.mp >= 20) this._doShield(game);
       else this._deny(game, state.mp < 20 ? 'mp' : 'cd');
     }
-    if (k.keysJustPressed.has('KeyR')) {
+    if (k.justPressed('skillR')) {
       if (this.skillEchoCd <= 0 && state.mp >= 30) this._doEcho(game);
       else this._deny(game, state.mp < 30 ? 'mp' : 'cd');
     }
-    if (k.keysJustPressed.has('KeyF')) {
+    if (k.justPressed('useDew')) {
       if (state.dew > 0 && this.hp < this.maxHp) this._useDew(game);
       else this._deny(game, state.dew <= 0 ? 'dew' : 'full');
     }
+    // 预输入缓冲结算(直接触发在上面优先消费,这里兜冷却转好的一瞬)
+    this._atkBuf = Math.max(0, (this._atkBuf || 0) - dt);
+    this._dashBuf = Math.max(0, (this._dashBuf || 0) - dt);
+    if (this._atkBuf > 0 && this.attackCd <= 0) { this._atkBuf = 0; this._doAttack(game); }
+    if (this._dashBuf > 0 && this.dashCd <= 0) { this._dashBuf = 0; this._doDash(game); }
 
     // 普攻前冲位移(与移动叠加;经 world.physics 碰撞,不会穿墙)
     if (this.lungeTime > 0) {
@@ -331,12 +343,9 @@ export class Player extends Entity {
     // 攻击取消(Hades dash-cancel):冲刺立即打断攻击后摇,并把连击窗口续满 —— 闪避不再是断连
     this.attackTime = 0;
     game.comboTimer = Math.max(game.comboTimer, COMBAT.comboWindow);
-    const k = game.input;
-    let dx = 0, dy = 0;
-    if (k.keys.has('ArrowLeft') || k.keys.has('KeyA')) dx -= 1;
-    if (k.keys.has('ArrowRight') || k.keys.has('KeyD')) dx += 1;
-    if (k.keys.has('ArrowUp') || k.keys.has('KeyW')) dy -= 1;
-    if (k.keys.has('ArrowDown') || k.keys.has('KeyS')) dy += 1;
+    // 方向复用 getMoveAxis(键盘/触屏摇杆/手柄注入的方向键三合一;静止时朝瞄准方向)
+    const axis = game.input.getMoveAxis();
+    let dx = axis.x, dy = axis.y;
     if (dx === 0 && dy === 0) { dx = Math.cos(this.aimAngle); dy = Math.sin(this.aimAngle); }
     const d = Math.hypot(dx, dy) || 1;
     this.dashVx = (dx / d) * 520;

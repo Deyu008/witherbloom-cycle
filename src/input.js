@@ -1,4 +1,27 @@
 // input.js — 输入管理(键鼠 + 手柄 + 触摸)
+
+// 动作映射表:调用方读动作名,键码集中在一处(手柄/触屏注入的键码走同一通道)
+export const ACTION_KEYS = {
+  navUp: ['ArrowUp', 'KeyW'],
+  navDown: ['ArrowDown', 'KeyS'],
+  navLeft: ['ArrowLeft', 'KeyA'],
+  navRight: ['ArrowRight', 'KeyD'],
+  confirm: ['Enter', 'NumpadEnter', 'Space'],
+  cancel: ['Escape'],
+  back: ['Backspace'],
+  attack: ['KeyJ'],
+  dash: ['Space'],
+  skillQ: ['KeyQ'],
+  skillE: ['KeyE'],
+  skillR: ['KeyR'],
+  useDew: ['KeyF'],
+  interact: ['KeyT'],
+  release: ['KeyV'],
+  mute: ['KeyM'],
+  help: ['Slash', 'KeyH'],
+  next: ['KeyN'],
+};
+
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -112,6 +135,69 @@ export class Input {
         }
       }
     });
+  }
+
+  // ===== 动作层:按动作名读取(映射见 ACTION_KEYS) =====
+  justPressed(action) {
+    const ks = ACTION_KEYS[action];
+    if (!ks) return false;
+    for (const c of ks) if (this.keysJustPressed.has(c)) return true;
+    return false;
+  }
+  held(action) {
+    const ks = ACTION_KEYS[action];
+    if (!ks) return false;
+    for (const c of ks) if (this.keys.has(c)) return true;
+    return false;
+  }
+
+  // ===== 手柄:每帧轮询,注入与键盘同构的键码(菜单/玩法即刻可用) =====
+  // 按钮映射:A=确认+攻击 B=暂停/取消 X=交互 Y=闪避 LB/LT=Q/F RB=RT=E/R Start=暂停
+  // 摇杆/十字键 → 方向键(getMoveAxis 读 this.keys,天然兼容)
+  pollGamepads() {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    const pads = navigator.getGamepads();
+    let gp = null;
+    for (const p of pads) { if (p && p.connected) { gp = p; break; } }
+    if (!gp) { this._gpPrev = null; return; }
+    const st = this._gpPrev || (this._gpPrev = {});
+    const BTN_MAP = {
+      0: ['Enter', 'KeyJ'], 1: ['Escape'], 2: ['KeyT'], 3: ['Space'],
+      4: ['KeyQ'], 5: ['KeyE'], 6: ['KeyF'], 7: ['KeyR'], 9: ['Escape'],
+    };
+    for (const idx in BTN_MAP) {
+      const down = !!(gp.buttons[idx] && gp.buttons[idx].pressed);
+      const was = !!st['b' + idx];
+      if (down && !was) {
+        for (const c of BTN_MAP[idx]) {
+          if (!this.keys.has(c)) this.keysJustPressed.add(c);
+          this.keys.add(c);
+        }
+      } else if (!down && was) {
+        for (const c of BTN_MAP[idx]) this.keys.delete(c);
+      }
+      st['b' + idx] = down;
+    }
+    // 摇杆(带死区)+ 十字键 → 方向键(边沿触发,避免菜单连跳)
+    const DZ = 0.38;
+    const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    const dirs = {
+      ArrowLeft: !!(gp.buttons[14] && gp.buttons[14].pressed) || ax < -DZ,
+      ArrowRight: !!(gp.buttons[15] && gp.buttons[15].pressed) || ax > DZ,
+      ArrowUp: !!(gp.buttons[12] && gp.buttons[12].pressed) || ay < -DZ,
+      ArrowDown: !!(gp.buttons[13] && gp.buttons[13].pressed) || ay > DZ,
+    };
+    for (const code in dirs) {
+      const down = !!dirs[code];
+      const was = !!st[code];
+      if (down && !was) {
+        if (!this.keys.has(code)) this.keysJustPressed.add(code);
+        this.keys.add(code);
+      } else if (!down && was) {
+        this.keys.delete(code);
+      }
+      st[code] = down;
+    }
   }
 
   getMoveAxis() {
