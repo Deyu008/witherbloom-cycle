@@ -1,7 +1,7 @@
 // scenes/title.js — 标题画面
 import { drawText, text, FONT, textWidth } from '../pixelfont.js';
 import { PAL } from '../palette.js';
-import { state, applySave, freshState } from '../state.js';
+import { applySave } from '../state.js';
 
 const CLASS_NAMES = { recall: '追忆者', forge: '锻体者', weave: '织梦者' };
 
@@ -41,8 +41,8 @@ export class TitleScene {
     }
     this.game.audio.sfxChapter();
     this.game.audio.stopMusic();
-    if (this.game.save) this.game.save.clear();
-    Object.assign(state, freshState());
+    // 存档清除与状态重置延迟到职业确认时执行(classSelect._confirm):
+    // 在职业选择按 ESC 返回标题的路径上,旧存档必须完好无损
     this.game.goto('classSelect', { chapter: 1, isNewGame: true });
   }
 

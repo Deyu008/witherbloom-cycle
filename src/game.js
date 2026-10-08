@@ -388,11 +388,12 @@ export class Game {
   }
 
   resetCombo(reason = '') {
-    const hadStreak = this.comboCount >= 5;
+    const count = this.comboCount;
+    const hadStreak = count >= 5;
     this.comboCount = 0;
     this.comboTimer = 0;
     if (hadStreak && reason === 'hurt' && this.current?._breakComboFx) {
-      this.current._breakComboFx(); // 高连击被打断给负反馈提示
+      this.current._breakComboFx(count); // 高连击被打断给负反馈提示
     }
   }
 

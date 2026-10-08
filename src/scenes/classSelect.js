@@ -1,6 +1,6 @@
 // scenes/classSelect.js — 三职业(回响倾向)选择
 import { text } from '../pixelfont.js';
-import { state } from '../state.js';
+import { state, freshState } from '../state.js';
 import { SPRITE_LIB } from '../sprite.js';
 
 // 基础数值(必须与 state.freshState() 默认对齐)
@@ -85,9 +85,10 @@ export class ClassSelectScene {
     this.menuItems = CLASSES;
   }
 
-  enter(_opts) {
+  enter(opts) {
     this.t = 0;
     this.menuIndex = 0;
+    this._opts = opts || {};
   }
 
   update(dt) {
@@ -123,6 +124,11 @@ export class ClassSelectScene {
     const item = this.menuItems[this.menuIndex];
     if (!item) return;
     this.game.audio.sfxClick();
+    if (this._opts.isNewGame) {
+      // 新游戏重置在此刻才执行:职业选择界面按 ESC 返回标题时,旧存档毫发无损
+      if (this.game.save) this.game.save.clear();
+      Object.assign(state, freshState());
+    }
     applyClassToState(item.id);
     this.game.goto('chapterIntro', { chapter: 1, isNewGame: true, heroClass: item.id });
   }

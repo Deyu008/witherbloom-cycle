@@ -512,7 +512,9 @@ export class GameScene {
   // ===== 刻印守护战:拾取刻印的瞬间,守护者从周身苏醒 =====
   _startSealAmbush() {
     const want = SEAL_AMBUSH_COUNTS[this.chapter] || 3;
-    const presets = ENEMY_PRESETS[this.chapter];
+    // 伏兵用玩家当前房间的区域怪物表:1 章 z2 的守护者该是灰烬小鬼而非森林精灵
+    const room = this.world.roomAt(this.player.x, this.player.y);
+    const presets = (room && this.world.zones?.[room.zone]?.enemyTable) || ENEMY_PRESETS[this.chapter];
     let n = 0;
     for (let i = 0; i < want * 12 && n < want; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -639,10 +641,14 @@ export class GameScene {
       }
       return;
     }
-    if (this.game.input.keysJustPressed.has('Slash') || this.game.input.keysJustPressed.has('KeyH')) {
+    if (!this.paused && (this.game.input.keysJustPressed.has('Slash') || this.game.input.keysJustPressed.has('KeyH'))) {
       this.helpOpen = !this.helpOpen; this.game.audio.sfxClick(); return;
     }
-    if (this.helpOpen) return;
+    if (this.helpOpen) {
+      // 帮助层内 ESC 也可关闭(此前提示写了 ESC 但 Escape 分支在此之后,永远到不了)
+      if (this.game.input.keysJustPressed.has('Escape')) { this.helpOpen = false; this.game.audio.sfxClick(); }
+      return;
+    }
     if (this.echoLogOpen) { this._updateEchoLog(dt); return; }
 
     // 通关结算窗(打完 BOSS 或"释怀"后自动弹出;N 键可重开)
@@ -652,7 +658,7 @@ export class GameScene {
       this.showChapterComplete();
     }
     if (this.chapterComplete) { this._updateChapterComplete(dt); return; }
-    if (cleared && this.chapter < 4 && this.game.input.keysJustPressed.has('KeyN')) {
+    if (cleared && this.chapter < 4 && !this.paused && this.game.input.keysJustPressed.has('KeyN')) {
       this.showChapterComplete();
     }
 
@@ -927,6 +933,23 @@ export class GameScene {
     else if (l.type === 'shard') { state.shards += 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '+1 碎片', '#b78ce0'); }
   }
 
+  // 高连击被打断的负反馈:灰白碎裂 + 中断浮字 + 轻震(连击"风险面"的读数)
+  _breakComboFx(count) {
+    const p = this.player;
+    if (!p) return;
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 90 + Math.random() * 150;
+      this.game.particles.emit({
+        x: p.x, y: p.y - 10, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+        life: 0.5, color: i % 3 === 0 ? '#f4ecd0' : '#8b8b96', size: 4,
+        type: 'square', fade: true, gravity: 260, shrink: true,
+      });
+    }
+    this.game.spawnFloatText(p.x, p.y - 62, `${count} 连击中断`, '#c88a8a', { px: 18, vy: 40, life: 0.9 });
+    this.game.camera.shake(4, 0.2);
+  }
+
   _onPlayerDeath() {
     if (this._dying) return;
     this._dying = true;
@@ -1179,16 +1202,17 @@ export class GameScene {
     if (!this.paused && this.chapterBoss && this.chapterBoss.alerted && this.chapterBoss.alive
         && this.player.distance(this.chapterBoss) < 560) this._renderBossHud(ctx, this.chapterBoss);
     if (this.chapterComplete) this._renderChapterComplete(ctx);
-    if (this.paused) this._renderPause(ctx);
-    // 死亡仪式:黑幕渐入 + "回声消散"(盖住 HUD,给死亡一拍留白)
-    if (this._dying) this._renderDeathOverlay(ctx);
     // 触屏动作按钮(仅触屏设备显示;对话/暂停/祝福覆盖层出现时隐藏,避免误触)
     if (this.game.input.touchMode && !this.dialogActive && !this.paused
         && !this.chapterComplete && !this._boonOffer && !this._dying) {
       this._renderTouchButtons(ctx);
     }
-    // 回响祝福三选一(最上层)
+    // 回响祝福三选一:画在暂停面板之下 —— 祝福打开时按 ESC 暂停,
+    // 暂停菜单必须可见可用(此前祝福层后画,会把暂停菜单整个盖住)
     if (this.boonPicker.offer) this.boonPicker.render(ctx);
+    if (this.paused) this._renderPause(ctx);
+    // 死亡仪式:黑幕渐入 + "回声消散"(盖住 HUD 与祝福层,给死亡一拍留白)
+    if (this._dying) this._renderDeathOverlay(ctx);
   }
 
   _renderTouchButtons(ctx) {
