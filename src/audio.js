@@ -2,10 +2,16 @@
 // 不需要外部音频文件,所有 SFX/BGM 用振荡器生成
 
 export class Audio {
+  // 音量档位(暂停菜单 ←→ 步进;0 仍保留一格,便于"只留一点点")
+  static VOL_LEVELS = [0, 0.15, 0.3, 0.5, 0.7, 0.85, 1];
+
   constructor() {
     this.ctx = null;
     this.master = null;
     this.muted = false;
+    this.vol = { music: 0.5, sfx: 0.7, voice: 0.85 }; // 分总线音量(localStorage 持久化)
+    this._duckT = 0;        // 配音播放中 → BGM 闪避
+    this._lookahead = 0.1;  // BGM 调度预约窗口(后台标签页时放大抗节流)
     this.musicGain = null;
     this.sfxGain = null;
     this.voiceGain = null;
@@ -15,29 +21,106 @@ export class Audio {
     this._fileBufs = {};     // mmx 生成的 BGM 文件解码缓存 key → AudioBuffer
     this._fileSrc = null;    // 当前文件音轨源
     this._loadingFiles = {}; // 防并发重复拉取 BGM
+    this._switchTimer = null; // 切轨淡出期间的延迟启动
   }
 
   init() {
     if (this.ctx) return;
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // 音量档位恢复(先于总线创建,赋值直接生效)
+      try { const v = JSON.parse(localStorage.getItem('witherbloom_vols') || 'null'); if (v) Object.assign(this.vol, v); } catch (e) {}
       this.master = this.ctx.createGain();
       this.master.gain.value = 0.4;
-      this.master.connect(this.ctx.destination);
+      // 主输出限幅器:多声部同帧叠加(斩击+命中+心跳)不至于削波爆音
+      // 只作安全网不参与调音;无 createDynamicsCompressor 的环境(测试 mock)自动跳过
+      if (typeof this.ctx.createDynamicsCompressor === 'function') {
+        try {
+          const comp = this.ctx.createDynamicsCompressor();
+          comp.threshold.value = -6; comp.knee.value = 0; comp.ratio.value = 12;
+          comp.attack.value = 0.003; comp.release.value = 0.25;
+          this.master.connect(comp);
+          comp.connect(this.ctx.destination);
+        } catch (e) { this.master.connect(this.ctx.destination); }
+      } else {
+        this.master.connect(this.ctx.destination);
+      }
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = 0.5;
+      this.musicGain.gain.value = this.vol.music;
       this.musicGain.connect(this.master);
       this.sfxGain = this.ctx.createGain();
-      this.sfxGain.gain.value = 0.7;
+      this.sfxGain.gain.value = this.vol.sfx;
       this.sfxGain.connect(this.master);
       this.voiceGain = this.ctx.createGain();
-      this.voiceGain.gain.value = 0.85;
+      this.voiceGain.gain.value = this.vol.voice;
       this.voiceGain.connect(this.master);
       // 恢复持久化的静音状态
       try { if (localStorage.getItem('witherbloom_muted') === '1') { this.muted = true; this.musicGain.gain.value = 0; } } catch (e) {}
+      // 后台标签页:Chrome 会把 setInterval 节流到 ≥1s,预约窗口同步放大,
+      // 否则调度饥饿、BGM 断流(回前台恢复)
+      try {
+        document.addEventListener('visibilitychange', () => {
+          this._lookahead = document.hidden ? 1.2 : 0.1;
+        });
+      } catch (e) {}
     } catch (e) {
       console.warn('AudioContext 不可用', e);
     }
+  }
+
+  // ===== 总线音量(带 ramp 的统一写入口;直接 .value 赋值会打断进行中的闪避/淡出) =====
+  _rampGain(param, target, tau) {
+    if (!param) return;
+    try {
+      if (typeof param.setTargetAtTime === 'function') {
+        if (param.cancelScheduledValues && this.ctx) param.cancelScheduledValues(this.ctx.currentTime);
+        param.setTargetAtTime(Math.max(0.0001, target), this.ctx.currentTime, tau);
+        return;
+      }
+    } catch (e) {}
+    param.value = target;
+  }
+
+  // 音乐总线目标值 = 音量 × (静音→0) × (闪避→0.32)
+  _applyMusicGain(tau = 0.05) {
+    if (!this.ctx || !this.musicGain) return;
+    const target = this.muted ? 0 : this.vol.music * (this._duckT > 0 ? 0.32 : 1);
+    this._rampGain(this.musicGain.gain, target, tau);
+  }
+
+  // BGM 闪避(ducking):配音/重要语音播放时把音乐压低约 10dB,结束后缓升恢复
+  duckMusic(on) {
+    this._duckT = Math.max(0, this._duckT + (on ? 1 : -1));
+    this._applyMusicGain(on ? 0.04 : 0.35);
+  }
+
+  setBusVolume(bus, t) {
+    if (!(bus in this.vol)) return;
+    this.vol[bus] = t;
+    if (this.ctx) {
+      if (bus === 'music') this._applyMusicGain(0.03);
+      else this._rampGain((bus === 'sfx' ? this.sfxGain : this.voiceGain).gain, this.muted ? 0 : t, 0.03);
+    }
+    try { localStorage.setItem('witherbloom_vols', JSON.stringify(this.vol)); } catch (e) {}
+  }
+
+  // 档位步进(d = ±1);返回新档位索引
+  stepVolume(bus, d) {
+    const lv = Audio.VOL_LEVELS;
+    const cur = this.vol[bus] ?? 0.5;
+    let idx = 0;
+    for (let i = 1; i < lv.length; i++) if (Math.abs(lv[i] - cur) <= Math.abs(lv[idx] - cur)) idx = i;
+    idx = Math.max(0, Math.min(lv.length - 1, idx + d));
+    this.setBusVolume(bus, lv[idx]);
+    return idx;
+  }
+
+  volBar(bus) {
+    const lv = Audio.VOL_LEVELS;
+    const cur = this.vol[bus] ?? 0.5;
+    let n = 0;
+    for (let i = 1; i < lv.length; i++) if (Math.abs(lv[i] - cur) <= Math.abs(lv[n] - cur)) n = i;
+    return '▮'.repeat(n) + '▯'.repeat(lv.length - 1 - n);
   }
 
   async resume() {
@@ -119,16 +202,16 @@ export class Audio {
     }
   }
 
-  // 击杀闷响(敌人倒地)
+  // 击杀闷响(敌人倒地;起音/时长抖动,连杀不"机关枪")
   sfxKill() {
-    this.note(70, 0.18, 'sine', 0.24);
-    this._noiseHit(0.2, 0.12, 150);
+    this.note(this._jit(70, 0.06), this._jit(0.18, 0.2), 'sine', 0.24);
+    this._noiseHit(this._jit(0.2, 0.2), 0.12, 150);
   }
 
   // 受击
   sfxHurt() {
-    this.note(200, 0.15, 'square', 0.2);
-    this.note(150, 0.2, 'square', 0.15);
+    this.note(this._jit(200, 0.1), 0.15, 'square', 0.2);
+    this.note(this._jit(150, 0.1), 0.2, 'square', 0.15);
   }
 
   // 拾取
@@ -176,20 +259,22 @@ export class Audio {
     this.note(784, 0.14, 'sine', 0.14);
   }
 
-  // BOSS 战吼
+  // BOSS 战吼(起音/时长/峰值全抖动:反复触发不再是同一声)
   sfxRoar() {
     if (!this.ctx) return;
     const t0 = this.ctx.currentTime;
+    const f0 = this._jit(80, 0.1);
+    const dur = this._jit(0.5, 0.2);
     const osc = this.ctx.createOscillator();
     const env = this.ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(80, t0);
-    osc.frequency.linearRampToValueAtTime(40, t0 + 0.5);
+    osc.frequency.setValueAtTime(f0, t0);
+    osc.frequency.linearRampToValueAtTime(f0 / 2, t0 + dur);
     env.gain.value = 0;
-    env.gain.linearRampToValueAtTime(0.25, t0 + 0.05);
-    env.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+    env.gain.linearRampToValueAtTime(0.25 * (0.9 + Math.random() * 0.2), t0 + 0.05);
+    env.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
     osc.connect(env).connect(this.sfxGain);
-    osc.start(t0); osc.stop(t0 + 0.55);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
   }
 
   // 死亡
@@ -266,6 +351,9 @@ export class Audio {
       const g = this.ctx.createGain();
       g.gain.value = volume;
       src.connect(g).connect(this.voiceGain);
+      // 配音闪避:BGM 压低约 10dB,台词结束缓升恢复(战争吼与人声不再互抢)
+      src.onended = () => { try { this.duckMusic(false); } catch (e) {} };
+      this.duckMusic(true);
       src.start();
     } catch (e) { /* 配音失败静默 */ }
   }
@@ -321,8 +409,8 @@ export class Audio {
   };
 
   // BGM 循环 —— 用 WebAudio lookahead 调度:25ms 心跳把未来 100ms 内的音符
-  // 预约到 ctx 时间轴,节拍精确且不受后台标签页节流影响(setInterval 抖动也无妨)。
-  // trackKey: 'ch1'|'ch2'|'ch3'|'ch4'|'boss'|'title';传入曲目变化时无缝切轨。
+  // 预约到 ctx 时间轴,节拍精确(setInterval 抖动也无妨;后台标签页把窗口放大到 1.2s 抗节流)。
+  // trackKey: 'ch1'|'ch2'|'ch3'|'ch4'|'boss'|'title';切轨时先淡出旧曲再起新曲(不硬切)。
   startMusic(tempo, trackKey = null) {
     if (!this.ctx) return;
     // 兼容旧签名 startMusic(tempo):无 trackKey 时沿用旧旋律
@@ -330,49 +418,63 @@ export class Audio {
       : { tempo, melody: [330, 392, 440, 392, 330, 294, 330, 392, 440, 494, 440, 392, 330, 294, 247, 294],
           bass: [82, 0, 110, 0, 98, 0, 123, 0, 82, 0, 110, 0, 98, 0, 123, 0] };
     const useTempo = trackKey ? track.tempo : (tempo || track.tempo);
-    // 同曲不重启:程序化走 _musicInterval,文件音轨走 _fileSrc(为 null 时会误判"没在播"导致回菜单 BGM 从头放)
-    if (this._currentTrack === trackKey && (this._musicInterval || this._fileSrc)) return;
-    this._currentTrack = trackKey;
-    this.stopMusic();
-    // 优先播放 mmx 生成的文件音轨;未解码则先播程序化旋律并异步加载,加载完平滑切换
-    if (trackKey && this._tryFileTrack(trackKey)) return;
-    if (trackKey) this._loadFileTrack(trackKey);
-    const melody = track.melody;
-    const bass = track.bass;
-    const drums = track.drums || null;
-    const beat = 60 / useTempo / 2; // 8 分音符
-    let step = 0;
-    let nextNoteTime = this.ctx.currentTime + 0.1;
-    const lookahead = 0.1; // 预约窗口(秒)
-    const schedule = () => {
-      if (!this.ctx) return;
-      while (nextNoteTime < this.ctx.currentTime + lookahead) {
-        const i = step % melody.length;
-        const m = melody[i];
-        if (m > 0) {
-          this._bgmNoteAt(m, nextNoteTime, beat * 0.9, 'square', 0.08);
-          // 旋律加法(轻微失谐三角波)+ 延迟一拍半的回声 —— 空间感来源
-          this._bgmNoteAt(m * 1.004, nextNoteTime, beat * 0.85, 'triangle', 0.05);
-          this._bgmNoteAt(m, nextNoteTime + beat * 1.5, beat * 0.7, 'triangle', 0.03);
+    // 同曲不重启:程序化走 _musicInterval,文件音轨走 _fileSrc(为 null 时会误判"没在播"导致回菜单 BGM 从头放)。
+    // 淡出切换窗口内(_switchTimer 未触发)不 early-return,让最新的切轨请求覆盖排队中的旧请求。
+    const switching = !!this._switchTimer;
+    if (!switching && this._currentTrack === trackKey && (this._musicInterval || this._fileSrc)) return;
+    const begin = () => {
+      this._switchTimer = null;
+      this.stopMusic();
+      this._currentTrack = trackKey; // 必须在 stopMusic 之后写回(它会清空本字段)
+      // 优先播放 mmx 生成的文件音轨;未解码则先播程序化旋律并异步加载,加载完平滑切换
+      if (trackKey && this._tryFileTrack(trackKey)) { this._applyMusicGain(0.15); return; }
+      if (trackKey) this._loadFileTrack(trackKey);
+      const melody = track.melody;
+      const bass = track.bass;
+      const drums = track.drums || null;
+      const beat = 60 / useTempo / 2; // 8 分音符
+      let step = 0;
+      let nextNoteTime = this.ctx.currentTime + 0.1;
+      const schedule = () => {
+        if (!this.ctx) return;
+        while (nextNoteTime < this.ctx.currentTime + this._lookahead) {
+          // 静音时只推进乐谱位置,不实例化节点(sfx/voice 由各自入口拦截)
+          if (!this.muted) {
+            const i = step % melody.length;
+            const m = melody[i];
+            if (m > 0) {
+              this._bgmNoteAt(m, nextNoteTime, beat * 0.9, 'square', 0.08);
+              // 旋律加法(轻微失谐三角波)+ 延迟一拍半的回声 —— 空间感来源
+              this._bgmNoteAt(m * 1.004, nextNoteTime, beat * 0.85, 'triangle', 0.05);
+              this._bgmNoteAt(m, nextNoteTime + beat * 1.5, beat * 0.7, 'triangle', 0.03);
+            }
+            const b = bass[i];
+            if (b > 0) {
+              this._bgmNoteAt(b, nextNoteTime, beat * 1.8, 'triangle', 0.12);
+              // 小节起点的持续低音衬底(sub sine),把"蜂鸣"托成"和声"
+              if (i % 8 === 0) this._bgmNoteAt(b / 2, nextNoteTime, beat * 7.5, 'sine', 0.09);
+            }
+            // 和声垫层:每小节一个软三和弦(sine 低增益),增加丰满度与调性支撑
+            if (track.chords && i % 8 === 0) {
+              const ch = track.chords[Math.floor(step / 8) % track.chords.length];
+              for (const f of ch) this._bgmNoteAt(f, nextNoteTime, beat * 7.2, 'sine', 0.042);
+            }
+            if (drums) this._drumsAt(drums, i, nextNoteTime);
+          }
+          nextNoteTime += beat;
+          step++;
         }
-        const b = bass[i];
-        if (b > 0) {
-          this._bgmNoteAt(b, nextNoteTime, beat * 1.8, 'triangle', 0.12);
-          // 小节起点的持续低音衬底(sub sine),把"蜂鸣"托成"和声"
-          if (i % 8 === 0) this._bgmNoteAt(b / 2, nextNoteTime, beat * 7.5, 'sine', 0.09);
-        }
-        // 和声垫层:每小节一个软三和弦(sine 低增益),增加丰满度与调性支撑
-        if (track.chords && i % 8 === 0) {
-          const ch = track.chords[Math.floor(step / 8) % track.chords.length];
-          for (const f of ch) this._bgmNoteAt(f, nextNoteTime, beat * 7.2, 'sine', 0.042);
-        }
-        if (drums) this._drumsAt(drums, i, nextNoteTime);
-        nextNoteTime += beat;
-        step++;
-      }
+      };
+      schedule();
+      this._musicInterval = setInterval(schedule, 25);
+      this._applyMusicGain(0.15); // 新曲淡入(从淡出的近零缓升回目标音量)
     };
-    schedule();
-    this._musicInterval = setInterval(schedule, 25);
+    // 旧曲还在响:先 ~0.22s 淡出再切(硬切会把小节中间的音"啪"一声斩断)
+    if (this._musicInterval || this._fileSrc) {
+      if (this._switchTimer) clearTimeout(this._switchTimer);
+      this._rampGain(this.musicGain && this.musicGain.gain, 0.0001, 0.09);
+      this._switchTimer = setTimeout(begin, 220);
+    } else begin();
   }
 
   // 在指定 ctx 绝对时间播放一个 BGM 音符(供 lookahead 预约)
@@ -440,6 +542,8 @@ export class Audio {
   _bgmNote(freq, dur, type, gain) { this._bgmNoteAt(freq, this.ctx ? this.ctx.currentTime : 0, dur, type, gain); }
 
   stopMusic() {
+    // 待执行的切轨启动一并取消(否则"停音乐"之后又自己响起来)
+    if (this._switchTimer) { clearTimeout(this._switchTimer); this._switchTimer = null; }
     if (this._musicInterval) {
       clearInterval(this._musicInterval);
       this._musicInterval = null;
@@ -487,7 +591,10 @@ export class Audio {
 
   setMute(m) {
     this.muted = m;
-    if (this.musicGain) this.musicGain.gain.value = m ? 0 : 0.5;
+    // 走统一 ramp 入口:直接 .value 赋值会打断进行中的闪避/切轨淡出曲线
+    this._applyMusicGain(0.02);
+    if (this.ctx && this.sfxGain) this._rampGain(this.sfxGain.gain, m ? 0 : this.vol.sfx, 0.02);
+    if (this.ctx && this.voiceGain) this._rampGain(this.voiceGain.gain, m ? 0 : this.vol.voice, 0.02);
     try { localStorage.setItem('witherbloom_muted', m ? '1' : '0'); } catch (e) {}
   }
 }

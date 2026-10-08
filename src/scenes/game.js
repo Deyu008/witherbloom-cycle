@@ -24,6 +24,15 @@ const ENEMY_PRESETS = {
   4: ['frost_lurker', 'mirror_knight', 'void_seeker'],
 };
 
+// 暂停菜单的分总线音量项(←→ 步进,文本原地刷新)
+function volMenuItem(audio, bus, label) {
+  const it = { text: '' };
+  const refresh = () => { it.text = `${label}  ${audio.volBar(bus)}  (←→ 调节)`; };
+  it.adjust = (d) => { audio.stepVolume(bus, d); refresh(); };
+  refresh();
+  return it;
+}
+
 export class GameScene {
   constructor(game) {
     this.game = game;
@@ -1084,6 +1093,8 @@ export class GameScene {
         }},
         { text: '打开帮助', action: () => { this.paused = false; this.helpOpen = true; } },
         { text: '声音: ' + (this.game.audio.muted ? '关' : '开') + '  (切换)', action: () => { this.game.audio.setMute(!this.game.audio.muted); } },
+        volMenuItem(this.game.audio, 'music', '音乐音量'),
+        volMenuItem(this.game.audio, 'sfx', '音效音量'),
         { text: '保存进度', action: () => { this.game.save.save(0); this.game.spawnFloatText(this.player.x, this.player.y - 30, '已保存', '#a8d860'); } },
         { text: '返回标题', action: () => { this.game.goto('title'); this.game.audio.stopMusic(); } },
       ];
@@ -1091,9 +1102,13 @@ export class GameScene {
   }
   _updatePauseMenu(dt) {
     const k = this.game.input;
-    if (k.keysJustPressed.has('ArrowUp') || k.keysJustPressed.has('KeyW')) { this.pauseIndex = (this.pauseIndex - 1 + this.pauseItems.length) % this.pauseItems.length; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('ArrowDown') || k.keysJustPressed.has('KeyS')) { this.pauseIndex = (this.pauseIndex + 1) % this.pauseItems.length; this.game.audio.sfxHover(); }
-    if (k.keysJustPressed.has('Enter') || k.keysJustPressed.has('Space')) { this.game.audio.sfxClick(); this.pauseItems[this.pauseIndex].action(); }
+    if (k.justPressed('navUp')) { this.pauseIndex = (this.pauseIndex - 1 + this.pauseItems.length) % this.pauseItems.length; this.game.audio.sfxHover(); }
+    if (k.justPressed('navDown')) { this.pauseIndex = (this.pauseIndex + 1) % this.pauseItems.length; this.game.audio.sfxHover(); }
+    if (k.justPressed('navLeft') || k.justPressed('navRight')) {
+      const it = this.pauseItems[this.pauseIndex];
+      if (it.adjust) { it.adjust(k.justPressed('navRight') ? 1 : -1); this.game.audio.sfxHover(); }
+    }
+    if (k.justPressed('confirm')) { this.game.audio.sfxClick(); this.pauseItems[this.pauseIndex].action(); }
   }
 
   // ===== 渲染 =====
