@@ -118,6 +118,15 @@ export class Game {
   _update(dt) {
     // 命中停顿:命中瞬间全局冻结一切更新(玩家+敌人+场景),强化打击感
     if (this.hitstop > 0) { this.hitstop -= dt; return; }
+    // 延时调用(顿帧期间同步冻结,与游戏时钟一致)
+    if (this._delayed && this._delayed.length > 0) {
+      const due = [];
+      const keep = [];
+      for (const d of this._delayed) (d.t <= 0 ? due : keep).push(d);
+      for (const d of keep) d.t -= dt;
+      this._delayed = keep;
+      for (const d of due) d.fn();
+    }
     // 慢动作(完美闪避):timeScale 快速滑向慢速档,窗口结束后快速恢复
     this.slowmoT = Math.max(0, this.slowmoT - dt);
     const targetTs = this.slowmoT > 0 ? COMBAT.perfectDodgeSlowmo.scale : 1;
@@ -139,7 +148,11 @@ export class Game {
       else { this._bossLineBanner.life -= dt; if (this._bossLineBanner.life <= 0) this._bossLineBanner._done = true; }
     }
     if (this._floatTexts) {
-      for (const ft of this._floatTexts) { ft.y -= (ft.vy ?? 30) * sdt; ft.life -= dt; }
+      for (const ft of this._floatTexts) {
+        ft.y -= (ft.vy ?? 30) * sdt;
+        if (ft.vy !== undefined) ft.vy *= Math.max(0.35, 1 - 2.5 * dt); // 上升减速,先弹后浮
+        ft.life -= dt;
+      }
       this._floatTexts = this._floatTexts.filter(ft => ft.life > 0);
     }
     this.updateSlashes(sdt);
@@ -252,10 +265,10 @@ export class Game {
       c.globalCompositeOperation = 'source-over';
       c.globalAlpha = 1;
     }
-    // BOSS 阶段切换/陨落:全屏闪白(BOSS 主题色,additive)
+    // BOSS 阶段切换/陨落:全屏闪白(BOSS 主题色,additive;无障碍可关)
     if (this.bossPhaseFlash > 0) {
       c.globalCompositeOperation = 'lighter';
-      c.globalAlpha = Math.min(0.55, this.bossPhaseFlash * 0.45);
+      c.globalAlpha = Math.min(0.55, this.bossPhaseFlash * 0.45) * (this._flashScale ?? 1);
       c.fillStyle = this._bossPhaseColor || '#fff';
       c.fillRect(0, 0, W, H);
       c.globalCompositeOperation = 'source-over';
@@ -364,6 +377,11 @@ export class Game {
       });
     }
   }
+  // 延时调用:游戏时钟驱动(暂停/顿帧自动冻结),用于"判定即时、演出延后"的分层反馈
+  delayCall(delay, fn) {
+    (this._delayed || (this._delayed = [])).push({ t: delay, fn });
+  }
+
   // 浮字:opts = { px:字号, vy:上升速度, life:寿命, shake:随机横移幅度 }
   spawnFloatText(x, y, text, color = '#fff', opts = {}) {
     this._floatTexts = this._floatTexts || [];
@@ -373,6 +391,7 @@ export class Game {
       text,
       color,
       life: opts.life ?? 1.0,
+      life0: opts.life ?? 1.0,
       px: opts.px,
       vy: opts.vy,
     });
@@ -458,11 +477,11 @@ export class Game {
     for (const ft of this._floatTexts) {
       const s = cam.worldToScreen(ft.x, ft.y);
       const a = Math.min(1, ft.life);
-      // 弹跳出:出生前 0.18s 用放大一号字,随生命衰减回落
+      // 弹跳出:出生瞬间放大一号,指数回落(取代原来的两档跳变)
       let px = typeof ft.px === 'number' ? ft.px : null;
       if (px !== null) {
-        const age = 1 - Math.max(0, Math.min(1, ft.life));
-        px += age < 0.18 ? 8 : 0; // 出生瞬间大一号,再缩回
+        const age = Math.max(0, Math.min(1, 1 - ft.life / (ft.life0 || 1)));
+        px *= 1 + 0.35 * Math.exp(-age * 14);
       }
       ctx.globalAlpha = a;
       text(ctx, ft.text, s.x, s.y, px ?? 'medium', ft.color, { align: 'center', shadowColor: '#000', shadowOffset: { x: 1, y: 1 } });

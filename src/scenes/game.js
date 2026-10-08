@@ -24,11 +24,32 @@ const ENEMY_PRESETS = {
   4: ['frost_lurker', 'mirror_knight', 'void_seeker'],
 };
 
+// 无障碍偏好(localStorage):屏震/全屏闪光可关
+function a11y() {
+  try { return JSON.parse(localStorage.getItem('witherbloom_a11y') || '{}'); } catch (e) { return {}; }
+}
+function setA11y(patch) {
+  try {
+    const v = { ...a11y(), ...patch };
+    localStorage.setItem('witherbloom_a11y', JSON.stringify(v));
+    return v;
+  } catch (e) { return a11y(); }
+}
+
 // 暂停菜单的分总线音量项(←→ 步进,文本原地刷新)
 function volMenuItem(audio, bus, label) {
   const it = { text: '' };
   const refresh = () => { it.text = `${label}  ${audio.volBar(bus)}  (←→ 调节)`; };
   it.adjust = (d) => { audio.stepVolume(bus, d); refresh(); };
+  refresh();
+  return it;
+}
+
+// 暂停菜单的布尔开关项(ENTER 切换,文本原地刷新)
+function toggleMenuItem(label, getOn, onToggle) {
+  const it = { text: '' };
+  const refresh = () => { it.text = `${label}: ${getOn() ? '开' : '关'}`; };
+  it.action = () => { onToggle(); refresh(); };
   refresh();
   return it;
 }
@@ -80,8 +101,9 @@ export class GameScene {
     this.world.player = this.player;
     this.world.entities.push(this.player);
     this.game.camera.setBounds(this.world.pxW, this.world.pxH);
-    this.game.camera.clearRegionClamp();
     this.game.camera.snap(this.player.x, this.player.y);
+    this.game.camera.shakeScale = a11y().shake === false ? 0 : 1; // 无障碍:可关屏震
+    this.game._flashScale = a11y().flash === false ? 0 : 1;       // 无障碍:可关全屏闪光
     this._spawnNpcs();
     this._spawnPickups();
     this._spawnSeals();
@@ -892,11 +914,17 @@ export class GameScene {
     }
 
     // 摄像机(朝移动方向轻微前探,画面先"看向"你要去的方向)
-    const lsp = this.player.speed || 1;
-    this.game.camera.follow(
-      this.player.x + (this.player.vx / lsp) * 30,
-      this.player.y + (this.player.vy / lsp) * 30,
-    );
+    // 前探向量归一化:量不随祝福加速漂移;停步瞬间目标不跳变(lead 单独缓动)
+    const la = this.game.camera.lookAhead;
+    const spd = Math.hypot(this.player.vx, this.player.vy);
+    const base = this.player.speed || 1;
+    const mag = Math.min(1, spd / base) * la;
+    const tx = spd > 1 ? (this.player.vx / spd) * mag : 0;
+    const ty = spd > 1 ? (this.player.vy / spd) * mag : 0;
+    const ek = Math.min(1, dt * 5);
+    this._leadX = (this._leadX || 0) + (tx - (this._leadX || 0)) * ek;
+    this._leadY = (this._leadY || 0) + (ty - (this._leadY || 0)) * ek;
+    this.game.camera.follow(this.player.x + this._leadX, this.player.y + this._leadY);
     this.game.camera.update(dt);
 
     if (!this.player.alive) this._onPlayerDeath();
@@ -935,6 +963,20 @@ export class GameScene {
     this._pickupStreak = streak;
     this._pickupStreakT = 1.5;
     this.game.audio.sfxPickup(660 * Math.pow(1.0595, Math.min(12, streak - 1)));
+    // 拾取爆点:类型色光尘从掉落位向玩家汇聚,与音阶递升配合成"哗啦"闭环
+    {
+      const pcol = { dew: '#8ad0e0', ember: '#e87a3c', leaf: '#a8d860', gold: '#e0b76a', shard: '#b78ce0' }[l.type] || '#e0b76a';
+      for (let i = 0; i < 7; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = 6 + Math.random() * 10;
+        this.game.particles.emit({
+          x: l.x + Math.cos(a) * d, y: l.y + Math.sin(a) * d,
+          vx: (this.player.x - l.x) * 2.4 + Math.cos(a) * 30,
+          vy: (this.player.y - l.y) * 2.4 + Math.sin(a) * 30,
+          life: 0.3, color: pcol, size: 3, type: 'circle', fade: true, shrink: true, additive: true,
+        });
+      }
+    }
     if (l.type === 'dew') { state.dew = (state.dew || 0) + 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '+1 露珠', '#8ad0e0'); }
     else if (l.type === 'ember') { state.mp = Math.min(state.maxMp, state.mp + 15); state.ember = (state.ember || 0) + 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '+15 MP', '#e87a3c'); }
     else if (l.type === 'leaf') { this.player.skillRecallCd = 0; this.player.skillShieldCd = 0; this.player.skillEchoCd = 0; state.leaf = (state.leaf || 0) + 1; this.game.spawnFloatText(this.player.x, this.player.y - 30, '技能就绪', '#a8d860'); }
@@ -1095,6 +1137,18 @@ export class GameScene {
         { text: '声音: ' + (this.game.audio.muted ? '关' : '开') + '  (切换)', action: () => { this.game.audio.setMute(!this.game.audio.muted); } },
         volMenuItem(this.game.audio, 'music', '音乐音量'),
         volMenuItem(this.game.audio, 'sfx', '音效音量'),
+        toggleMenuItem('屏幕震动',
+          () => a11y().shake !== false,
+          () => {
+            const v = setA11y({ shake: a11y().shake === false });
+            this.game.camera.shakeScale = v.shake === false ? 0 : 1;
+          }),
+        toggleMenuItem('闪光效果',
+          () => a11y().flash !== false,
+          () => {
+            const v = setA11y({ flash: a11y().flash === false });
+            this.game._flashScale = v.flash === false ? 0 : 1;
+          }),
         { text: '保存进度', action: () => { this.game.save.save(0); this.game.spawnFloatText(this.player.x, this.player.y - 30, '已保存', '#a8d860'); } },
         { text: '返回标题', action: () => { this.game.goto('title'); this.game.audio.stopMusic(); } },
       ];
@@ -1108,7 +1162,11 @@ export class GameScene {
       const it = this.pauseItems[this.pauseIndex];
       if (it.adjust) { it.adjust(k.justPressed('navRight') ? 1 : -1); this.game.audio.sfxHover(); }
     }
-    if (k.justPressed('confirm')) { this.game.audio.sfxClick(); this.pauseItems[this.pauseIndex].action(); }
+    if (k.justPressed('confirm')) {
+      const it = this.pauseItems[this.pauseIndex];
+      if (it.action) { this.game.audio.sfxClick(); it.action(); }
+      else if (it.adjust) { this.game.audio.sfxClick(); it.adjust(1); } // 音量项 ENTER = 升一档
+    }
   }
 
   // ===== 渲染 =====
@@ -1754,17 +1812,20 @@ export class GameScene {
     const W = this.game.canvas.width, H = this.game.canvas.height;
     ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0, 0, W, H);
     // 中央面板容器(菜单与背景彻底隔离,不再依赖暗层程度)
-    const pw = 560, ph = 96 + this.pauseItems.length * 50 + 56;
+    // 行距随条目数自适应:菜单项增多(音量/无障碍)也不超出 720 逻辑高
+    const rowH = this.pauseItems.length > 10 ? 34 : 50;
+    const selH = rowH === 34 ? 28 : 38;
+    const pw = 560, ph = 96 + this.pauseItems.length * rowH + 56;
     const px0 = (W - pw) / 2, py0 = (H - ph) / 2 - 10;
     uiPanel(ctx, px0, py0, pw, ph, { accent: 'rgba(183,140,224,0.5)', fill: 'rgba(16,12,28,0.96)' });
     text(ctx, '暂 停', W / 2, py0 + 30, 'title', '#f4ecd0', { align: 'center' });
     const listY = py0 + 96;
     for (let i = 0; i < this.pauseItems.length; i++) {
       const sel = i === this.pauseIndex;
-      const y = listY + i * 50;
+      const y = listY + i * rowH;
       if (sel) {
         ctx.fillStyle = 'rgba(183,140,224,0.18)';
-        ctx.fillRect(px0 + 24, y - 17, pw - 48, 38);
+        ctx.fillRect(px0 + 24, y - selH / 2, pw - 48, selH);
         text(ctx, '▶', px0 + 34, y - 4, 'small', '#b78ce0');
         text(ctx, '◀', px0 + pw - 34, y - 4, 'small', '#b78ce0', { align: 'right' });
       }

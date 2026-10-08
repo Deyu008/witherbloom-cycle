@@ -52,6 +52,25 @@ check('Camera.screenY', cam.screenY(200) === 153);
 check('Camera.inView true', cam.inView(500, 400) === true);
 check('Camera.inView false', cam.inView(-50, -50) === false);
 check('Camera.worldToScreen 仍可用', typeof cam.worldToScreen(0, 0).x === 'number');
+// trauma 屏震模型:累加不重置、平滑采样、归零即清
+const camS = new Camera(1280, 720);
+camS.shake(22, 0.5);
+check('大震 trauma 接近满', camS.trauma > 0.9);
+camS.update(0.2); // 衰减一段
+const mid = camS.trauma;
+camS.shake(3, 0.1);
+check('小震在衰减途中是累加而非重置', camS.trauma >= mid);
+camS.update(0.016);
+check('屏震为平滑正弦采样(有限值)', Number.isFinite(camS.shakeX) && Number.isFinite(camS.shakeY));
+camS.trauma = 0; camS.update(0.016);
+check('trauma 归零后震幅同步清零', camS.shakeX === 0 && camS.shakeY === 0);
+// 死区跟随:微移不带动画面,溢出量才推动锚点
+const camD = new Camera(1280, 720);
+camD.snap(1000, 500);
+camD.follow(1015, 500);
+check('死区内微移不推动相机目标', camD.targetX === 1000 - 640);
+camD.follow(1080, 500);
+check('溢出死区的移动按溢出量推动', camD.targetX === 1000 - 640 + (80 - 24));
 
 const { World } = await import(url('src/world.js'));
 const { LEVELS } = await import(url('src/data/chapters.js'));

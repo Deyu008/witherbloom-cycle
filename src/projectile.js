@@ -33,8 +33,23 @@ export class Projectile {
       if (this.tail.length > 8) this.tail.shift();
     }
     if (!world) return;
-    // 撞墙消失
-    if (world.solidAtPx(this.x, this.y)) { this.dead = true; return; }
+    // 撞墙消散:弹体色小火花 + 极轻的落点音(BOSS 弹幕战满屏弹无声蒸发太干)
+    if (world.solidAtPx(this.x, this.y)) {
+      this.dead = true;
+      if (game?.particles) {
+        for (let i = 0; i < 5; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const sp = 40 + Math.random() * 70;
+          game.particles.emit({
+            x: this.x, y: this.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+            life: 0.28, color: this.color, size: 3,
+            type: 'circle', fade: true, shrink: true, additive: true,
+          });
+        }
+        game.audio?.note?.(180, 0.04, 'sine', 0.03);
+      }
+      return;
+    }
     // 命中(同阵营/中立/发射者本身都跳过 —— 修复 BOSS 被自己弹幕击杀)
     for (const e of world.entities) {
       if (!e.alive) continue;

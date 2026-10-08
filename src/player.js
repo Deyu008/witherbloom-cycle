@@ -295,7 +295,10 @@ export class Player extends Entity {
         game.onDamageDealt(dealt || 0); // 无敌目标返回 0,统计口径按实际生效值
         game.audio.sfxHit(crit);
         // 命中粒子沿挥击方向喷射(不再无脑向四周炸开)
-        game.spawnHitParticles(e.x, e.y, crit ? '#ffd700' : '#ffe090', this.aimAngle);
+        // 延到挥出帧(~0.05s):判定保持即时,数字/粒子不再先于刀光弹出
+        game.delayCall?.(0.05, () => {
+          game.spawnHitParticles(e.x, e.y, crit ? '#ffd700' : '#ffe090', this.aimAngle);
+        });
         // 命中回蓝:贴身输出 → 技能循环的引擎(基线 2 点 + 祝福加成)
         state.mp = Math.min(state.maxMp, state.mp + COMBAT.comboMpPerHit + mods.hitMp);
         // 吸血祝福:伤害按比例转化为生命
@@ -305,10 +308,12 @@ export class Player extends Entity {
         // 伤害数字:普通白 / 劈砸金 / 暴击金色大字弹跳 / 击杀更大
         const kill = wasAlive && !e.alive;
         if (kill) kills++;
-        game.spawnFloatText(e.x, e.y - 34, `${dmg}`,
-          crit ? '#ffcf4d' : (stage === 0 ? '#e0b76a' : '#f4ecd0'),
-          { px: crit ? 30 : (stage === 0 ? 20 : 18), vy: kill ? 54 : 40, life: crit ? 1.2 : 0.9 });
-        if (crit) game.spawnFloatText(e.x, e.y - 52, '会心!', '#ffe9a8', { px: 16, vy: 46, life: 0.7 });
+        game.delayCall?.(0.05, () => {
+          game.spawnFloatText(e.x, e.y - 34, `${dmg}`,
+            crit ? '#ffcf4d' : (stage === 0 ? '#e0b76a' : '#f4ecd0'),
+            { px: crit ? 30 : (stage === 0 ? 20 : 18), vy: kill ? 54 : 40, life: crit ? 1.2 : 0.9 });
+          if (crit) game.spawnFloatText(e.x, e.y - 52, '会心!', '#ffe9a8', { px: 16, vy: 46, life: 0.7 });
+        });
         // 命中停顿(hitstop):随伤害分量递进 —— 普通轻顿 / 暴击深顿 / 击杀最深
         const stopScale = game.comboCount >= 12 ? 1.4 : 1;
         const stop = (crit ? 0.085 : 0.04) * stopScale * (e.side === 'enemy' && (e.maxHp ?? 0) > 200 ? 1.6 : 1);
@@ -457,6 +462,12 @@ export class Player extends Entity {
       // 玩家受击也吃顿帧+微震(挨打要有分量,不能只闪一下)
       game.hitstop = Math.max(game.hitstop || 0, 0.045);
       game.camera.shake(4, 0.18);
+      // 终端反馈:受击音 + 从受击方向反向喷溅的火花 —— 此前弹幕/接触/爆炸
+      // 打中玩家是纯结算,无声无粒子(近战路径才有音)
+      game.audio.sfxHurt?.();
+      const away = (Number.isFinite(fromX) && Number.isFinite(fromY))
+        ? Math.atan2(this.y - fromY, this.x - fromX) : null;
+      game.spawnHitParticles(this.x, this.y, '#ff6a5a', away);
     }
     return finalAmt; // 与 Entity/Enemy/Boss 对齐:返回实际生效的伤害
   }
