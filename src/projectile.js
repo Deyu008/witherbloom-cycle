@@ -1,6 +1,18 @@
 // projectile.js — 抛射物(玩家回声 / 敌人弹)
+// 对象池:BOSS 弹幕战峰值 ~40 活弹,每秒 new 数百个 Projectile + 尾迹 {x,y}
+// 是最大的 GC churn 源;池化 + 尾迹点复用后稳态零分配。
+import { glowOf } from './fxCache.js';
+
 export class Projectile {
   constructor(x, y, opts = {}, world = null) {
+    this.hit = new Set();
+    this.tail = [];
+    this._tailSpare = []; // 尾迹点复用池
+    this._init(x, y, opts, world);
+  }
+
+  // 池化复用入口:字段全部重写(与构造等价)
+  _init(x, y, opts = {}, world = null) {
     this.x = x; this.y = y;
     this.vx = opts.vx ?? 0;
     this.vy = opts.vy ?? 0;
@@ -11,9 +23,9 @@ export class Projectile {
     this.color = opts.color ?? '#fff';
     this.type = opts.type ?? 'default';
     this.pierce = opts.pierce ?? false;
-    this.hit = new Set();
+    this.hit.clear();
     this.dead = false;
-    this.tail = [];
+    while (this.tail.length) this._tailSpare.push(this.tail.pop());
     this.tailT = 0;
     this.world = world;
     this.source = opts.source ?? null; // 发射者(命中时跳过,避免自残)
@@ -29,8 +41,11 @@ export class Projectile {
     this.tailT += dt;
     if (this.tailT > 0.02) {
       this.tailT = 0;
-      this.tail.push({ x: this.x, y: this.y });
-      if (this.tail.length > 8) this.tail.shift();
+      // 尾迹点对象复用:shift 出来的点进备池,下一节直接改写字段
+      const pt = this._tailSpare.pop() || { x: 0, y: 0 };
+      pt.x = this.x; pt.y = this.y;
+      this.tail.push(pt);
+      if (this.tail.length > 8) this._tailSpare.push(this.tail.shift());
     }
     if (!world) return;
     // 撞墙消散:弹体色小火花 + 极轻的落点音(BOSS 弹幕战满屏弹无声蒸发太干)
@@ -71,30 +86,42 @@ export class Projectile {
   }
 
   render(ctx, cam) {
-    const s = cam.worldToScreen(this.x, this.y);
+    // 标量坐标:弹本体 + 每个尾点不再各分配一个 {x,y}
+    const ox = -cam.x + cam.shakeX, oy = -cam.y + cam.shakeY;
+    const sxB = this.x + ox, syB = this.y + oy;
     for (let i = 0; i < this.tail.length; i++) {
       const p = this.tail[i];
-      const ss = cam.worldToScreen(p.x, p.y);
       ctx.globalAlpha = (i / this.tail.length) * 0.6;
       ctx.fillStyle = this.color;
       ctx.beginPath();
-      ctx.arc(ss.x, ss.y, this.radius * (i / this.tail.length), 0, Math.PI * 2);
+      ctx.arc(p.x + ox, p.y + oy, this.radius * (i / this.tail.length), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
     if (this.type === 'echo') {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, this.radius * 2.2);
-      grad.addColorStop(0, '#ffffff');
-      grad.addColorStop(0.3, this.color);
-      grad.addColorStop(1, 'rgba(183,140,224,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(s.x, s.y, this.radius * 2.2, 0, Math.PI * 2); ctx.fill();
+      // 预烘焙发光球(白色热核 + 弹体色),不再逐帧建渐变
+      const d = this.radius * 4.4;
+      ctx.globalAlpha = 1;
+      ctx.drawImage(glowOf(this.color, '#ffffff'), sxB - d / 2, syB - d / 2, d, d);
       ctx.restore();
     } else {
       ctx.fillStyle = this.color;
-      ctx.beginPath(); ctx.arc(s.x, s.y, this.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sxB, syB, this.radius, 0, Math.PI * 2); ctx.fill();
     }
   }
 }
+
+// ===== 对象池(发射方用 acquire,场景清理时 release)=====
+const _pool = [];
+export const ProjectilePool = {
+  acquire(x, y, opts = {}, world = null) {
+    const p = _pool.pop() || new Projectile();
+    p._init(x, y, opts, world);
+    return p;
+  },
+  release(p) {
+    if (p && _pool.length < 96) _pool.push(p);
+  },
+};

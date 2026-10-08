@@ -1,8 +1,12 @@
 // particles.js — 粒子系统
 // 优化:update 用写指针原地压缩(无 splice);render 按 additive/普通分两 pass 批量
-// 绘制(最多切一次 globalCompositeOperation)+ 视口剔除 + 内联坐标(零对象分配)。
+// 绘制(最多切一次 globalCompositeOperation)+ 视口剔除 + 内联坐标(零对象分配);
+// emit 从空闲池复用粒子结构体 —— 战斗中每秒数百次发射也不再产生新对象。
+// 空气阻尼按秒而非按帧(60fps 基准 0.96/帧)。
+const AIR_K = -Math.log(0.96) * 60;
+
 export class ParticleSystem {
-  constructor() { this.particles = []; }
+  constructor() { this.particles = []; this._free = []; }
 
   emit(opts) {
     // opts: { x, y, vx, vy, life, color, size, gravity?, fade?, type? }
@@ -11,37 +15,38 @@ export class ParticleSystem {
       if (this.particles.length > 600) break; // 性能上限
       const a = (opts.angle ?? Math.random() * Math.PI * 2) + (opts.spread ? (Math.random() - 0.5) * opts.spread : 0);
       const sp = (opts.speed ?? 100) * (0.5 + Math.random() * 0.5);
-      this.particles.push({
-        x: opts.x, y: opts.y,
-        vx: Math.cos(a) * sp + (opts.vx ?? 0),
-        vy: Math.sin(a) * sp + (opts.vy ?? 0),
-        life: opts.life ?? 0.6,
-        maxLife: opts.life ?? 0.6,
-        color: opts.color ?? '#fff',
-        size: opts.size ?? 3,
-        gravity: opts.gravity ?? 0,
-        fade: opts.fade !== false,
-        type: opts.type ?? 'square', // 'square' | 'circle' | 'spark'
-        rot: opts.rot ?? 0,
-        rotV: opts.rotV ?? 0,
-        shrink: opts.shrink ?? false,
-        additive: opts.additive ?? false,
-      });
+      const p = this._free.pop() || {};
+      p.x = opts.x; p.y = opts.y;
+      p.vx = Math.cos(a) * sp + (opts.vx ?? 0);
+      p.vy = Math.sin(a) * sp + (opts.vy ?? 0);
+      p.life = opts.life ?? 0.6;
+      p.maxLife = opts.life ?? 0.6;
+      p.color = opts.color ?? '#fff';
+      p.size = opts.size ?? 3;
+      p.gravity = opts.gravity ?? 0;
+      p.fade = opts.fade !== false;
+      p.type = opts.type ?? 'square'; // 'square' | 'circle' | 'spark'
+      p.rot = opts.rot ?? 0;
+      p.rotV = opts.rotV ?? 0;
+      p.shrink = opts.shrink ?? false;
+      p.additive = opts.additive ?? false;
+      this.particles.push(p);
     }
   }
 
   update(dt) {
     const ps = this.particles;
+    const air = Math.exp(-AIR_K * dt);
     let w = 0; // 写指针:存活粒子原地压缩,避免 splice 的 O(n) 移位
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i];
       p.life -= dt;
-      if (p.life <= 0) continue; // 丢弃,写指针不推进
+      if (p.life <= 0) { this._free.push(p); continue; } // 回空闲池,写指针不推进
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.vy += p.gravity * dt;
-      p.vx *= 0.96;
-      p.vy *= 0.96;
+      p.vx *= air;
+      p.vy *= air;
       p.rot += p.rotV * dt;
       ps[w++] = p;
     }
@@ -88,5 +93,8 @@ export class ParticleSystem {
     ctx.globalAlpha = 1;
   }
 
-  clear() { this.particles.length = 0; }
+  clear() {
+    for (const p of this.particles) this._free.push(p);
+    this.particles.length = 0;
+  }
 }

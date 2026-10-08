@@ -2,9 +2,10 @@
 import { Entity } from './entity.js';
 import { state } from './state.js';
 import { SPRITE_LIB } from './sprite.js';
-import { Projectile } from './projectile.js';
+import { Projectile, ProjectilePool } from './projectile.js';
 import { PLAYER_BASE, CLASS_MODS, COMBAT, CLASS_THEME } from './data/balance.js';
 import { computeBoonMods } from './data/boons.js';
+import { drawGlow } from './fxCache.js';
 
 // 纯函数:自动瞄准选目标。规则(修复"贴脸敌人朝反方向挥空"):
 //  - 近身威胁(≤ closeR,约等于普攻判定盒前伸距离):最近者优先,不受朝向锥限制
@@ -382,7 +383,7 @@ export class Player extends Entity {
     this.skillRecallCd = this.effCd('recall');
     game.audio.sfxSkill();
     const dx = Math.cos(this.aimAngle), dy = Math.sin(this.aimAngle);
-    const proj = new Projectile(this.x + dx * 18, this.y + dy * 18, {
+    const proj = ProjectilePool.acquire(this.x + dx * 18, this.y + dy * 18, {
       vx: dx * 320, vy: dy * 320,
       damage: 24 + state.level * 4, team: 'player', life: 1.1,
       color: this.theme.color, radius: 11, type: 'echo',
@@ -496,16 +497,12 @@ export class Player extends Entity {
   render(ctx, cam) {
     if (!this.alive) return;
     const t = this.theme;
-    // 主角光环(职业色,永远能找到自己)
+    // 主角光环(职业色,永远能找到自己;预烘焙精灵,脉冲用 alpha 表达)
     const s = cam.worldToScreen(this.x, this.y);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const pulse = 0.5 + 0.2 * Math.sin(this.animTime * 4);
-    const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 34);
-    grad.addColorStop(0, `rgba(${t.rgb},${0.35 * pulse})`);
-    grad.addColorStop(1, `rgba(${t.rgb},0)`);
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(s.x, s.y, 34, 0, Math.PI * 2); ctx.fill();
+    drawGlow(ctx, t.color, s.x, s.y, 68, 0.35 * pulse);
     ctx.restore();
     // i-Frame 闪烁
     if (this.iFrame > 0 && Math.floor(this.iFrame * 18) % 2 === 0) ctx.globalAlpha = 0.4;

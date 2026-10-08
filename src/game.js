@@ -148,12 +148,16 @@ export class Game {
       else { this._bossLineBanner.life -= dt; if (this._bossLineBanner.life <= 0) this._bossLineBanner._done = true; }
     }
     if (this._floatTexts) {
-      for (const ft of this._floatTexts) {
+      const fts = this._floatTexts;
+      let w = 0;
+      for (let i = 0; i < fts.length; i++) {
+        const ft = fts[i];
         ft.y -= (ft.vy ?? 30) * sdt;
         if (ft.vy !== undefined) ft.vy *= Math.max(0.35, 1 - 2.5 * dt); // 上升减速,先弹后浮
         ft.life -= dt;
+        if (ft.life > 0) fts[w++] = ft;
       }
-      this._floatTexts = this._floatTexts.filter(ft => ft.life > 0);
+      fts.length = w;
     }
     this.updateSlashes(sdt);
     // 过渡(场景切换)
@@ -438,8 +442,14 @@ export class Game {
   }
   updateSlashes(dt) {
     if (!this._slashes) return;
-    for (const s of this._slashes) s.t += dt;
-    this._slashes = this._slashes.filter(s => s.t < 0.15);
+    const sl = this._slashes;
+    let w = 0;
+    for (let i = 0; i < sl.length; i++) {
+      const s = sl[i];
+      s.t += dt;
+      if (s.t < 0.15) sl[w++] = s;
+    }
+    sl.length = w;
   }
   renderSlashes(ctx, cam) {
     if (!this._slashes || this._slashes.length === 0) return;

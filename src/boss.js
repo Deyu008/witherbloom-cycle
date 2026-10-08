@@ -1,10 +1,11 @@
 // boss.js — BOSS(独立 AI,阶段转换,俯视角)
 import { Entity } from './entity.js';
 import { SPRITE_LIB } from './sprite.js';
-import { Projectile } from './projectile.js';
+import { Projectile, ProjectilePool } from './projectile.js';
 import { Enemy } from './enemy.js';
 import { state } from './state.js';
 import { BOSS_DATA, MINIBOSS_DATA, MINIBOSS_FALLBACK, COMBAT } from './data/balance.js';
+import { drawGlow } from './fxCache.js';
 
 // BOSS 台词 → 配音文件映射(mmx TTS 生成;全部为游戏内既有文案)
 const VOICE_LINES = {
@@ -332,7 +333,7 @@ export class Boss extends Entity {
     return a;
   }
   _shoot(angle, speed, dmgMul, color, radius, type) {
-    const p = new Projectile(this.x, this.y, {
+    const p = ProjectilePool.acquire(this.x, this.y, {
       vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
       damage: this.dmg * dmgMul, team: 'enemy', life: 2.0,
       color, radius, type: type || 'enemy',
@@ -373,7 +374,7 @@ export class Boss extends Entity {
       else if (phase === 1) {
         for (let i = 0; i < 5; i++) {
           const a = (i / 5) * Math.PI * 2;
-          const p = new Projectile(this.x, this.y, { vx: Math.cos(a) * 120, vy: Math.sin(a) * 120, damage: this.dmg * 0.4, team: 'enemy', life: 2, color: '#a8b8d0', radius: 6, type: 'mirror', side: 'enemy', source: this }, this.world);
+          const p = ProjectilePool.acquire(this.x, this.y, { vx: Math.cos(a) * 120, vy: Math.sin(a) * 120, damage: this.dmg * 0.4, team: 'enemy', life: 2, color: '#a8b8d0', radius: 6, type: 'mirror', side: 'enemy', source: this }, this.world);
           p.pierce = true; this.world.projectiles.push(p);
         }
       } else {
@@ -404,7 +405,7 @@ export class Boss extends Entity {
       game.camera.shake(9, 0.35);
       for (let wave = 0; wave < 3; wave++) {
         for (let i = -2; i <= 2; i++) {
-          const p = new Projectile(this.x, this.y, {
+          const p = ProjectilePool.acquire(this.x, this.y, {
             vx: Math.cos(aim + i * 0.18) * (130 + wave * 35),
             vy: Math.sin(aim + i * 0.18) * (130 + wave * 35),
             damage: this.dmg * 0.45, team: 'enemy', life: 1.6,
@@ -432,7 +433,7 @@ export class Boss extends Entity {
       game.camera.shake(10, 0.4);
       for (let i = 0; i < 7; i++) {
         const a = (i / 7) * Math.PI * 2 + this.specialTimer;
-        const p = new Projectile(this.x, this.y, {
+        const p = ProjectilePool.acquire(this.x, this.y, {
           vx: Math.cos(a) * 110, vy: Math.sin(a) * 110,
           damage: this.dmg * 0.4, team: 'enemy', life: 2.4,
           color: '#a8b8d0', radius: 6, type: 'mirror', side: 'enemy', source: this,
@@ -533,19 +534,11 @@ export class Boss extends Entity {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const pulse = 0.4 + 0.25 * Math.sin(this.animTime * 3);
-    const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, this.drawW * 0.9);
-    grad.addColorStop(0, `rgba(${hexToRgb(this.color)},${0.3 * pulse})`);
-    grad.addColorStop(1, `rgba(${hexToRgb(this.color)},0)`);
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(s.x, s.y, this.drawW * 0.9, 0, Math.PI * 2); ctx.fill();
+    drawGlow(ctx, this.color, s.x, s.y, this.drawW * 1.8, 0.3 * pulse);
     // 狂暴:红色脉冲外圈叠在原光环上
     if (this.enraged) {
       const rp = 0.5 + 0.35 * Math.sin(this.contactPulse * 6);
-      const rg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, this.drawW * 1.05);
-      rg.addColorStop(0, `rgba(255,80,60,${0.22 * rp})`);
-      rg.addColorStop(1, 'rgba(255,80,60,0)');
-      ctx.fillStyle = rg;
-      ctx.beginPath(); ctx.arc(s.x, s.y, this.drawW * 1.05, 0, Math.PI * 2); ctx.fill();
+      drawGlow(ctx, '#ff503c', s.x, s.y, this.drawW * 2.1, 0.22 * rp);
     }
     ctx.restore();
     // 力竭可释怀:金色呼吸环(Undertale 黄名的空间版),与红圈"危险"语义对立

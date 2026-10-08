@@ -1,4 +1,6 @@
 // entity.js — 实体基类(俯视角,中心坐标模型)
+// 摩擦系数(1/s):60fps 下的 0.86/帧 等价于 exp(-k·dt),k = -ln(0.86)×60
+const ENTITY_FRICTION_K = -Math.log(0.86) * 60;
 // 约定:
 //   x, y = 实体中心(逻辑位置)
 //   w, h = 碰撞框尺寸(以 x,y 为中心),应 ≤ 1 个地砖以便穿过单格缝隙
@@ -90,8 +92,10 @@ export class Entity {
     // 默认把速度转成位移(子类可覆盖)
     this.dx += this.vx * dt;
     this.dy += this.vy * dt;
-    this.vx *= 0.86;
-    this.vy *= 0.86;
+    // 摩擦按秒而非按帧(60fps 基准 0.86/帧;30fps 设备上原写法阻尼近乎翻倍)
+    const fr = Math.exp(-ENTITY_FRICTION_K * dt);
+    this.vx *= fr;
+    this.vy *= fr;
     if (this.attackCooldown > 0) this.attackCooldown -= dt;
     this.animTime += dt;
     if (this.sprites) {
@@ -115,12 +119,12 @@ export class Entity {
 
   // 地面阴影(所有实体共用)
   drawShadow(ctx, cam) {
-    const s = cam.worldToScreen(this.x, this.sortY);
+    const sx = cam.screenX(this.x), sy = cam.screenY(this.sortY);
     ctx.save();
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(s.x, s.y, this.drawW * 0.42, this.drawW * 0.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy, this.drawW * 0.42, this.drawW * 0.2, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -128,9 +132,9 @@ export class Entity {
   // 受损血条(敌人用)
   drawHpBar(ctx, cam) {
     if (this.hp >= this.maxHp || this.team !== 'enemy') return;
-    const s = cam.worldToScreen(this.x, this.sortY);
+    const sx = cam.screenX(this.x), sy = cam.screenY(this.sortY);
     const bw = Math.max(28, this.drawW * 0.8), bh = 4;
-    const bx = s.x - bw / 2, by = s.y - this.drawH - 10;
+    const bx = sx - bw / 2, by = sy - this.drawH - 10;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
     ctx.fillStyle = '#d65858';
@@ -145,17 +149,17 @@ export class Entity {
   // ===== 通用动作变形绘制:m = { offX, offY, rot, sx, sy } =====
   // 阴影与血条不参与变形(贴地/贴 UI);子类算好动作参数传入即可。
   renderWithMotion(ctx, cam, m = {}) {
-    const s = cam.worldToScreen(this.x, this.sortY);
+    const sx0 = cam.screenX(this.x), sy0 = cam.screenY(this.sortY);
     const offX = m.offX || 0, offY = m.offY || 0;
     const rot = m.rot || 0, sx = m.sx ?? 1, sy = m.sy ?? 1;
     this.drawShadow(ctx, cam);
     const need = offX !== 0 || offY !== 0 || rot !== 0 || sx !== 1 || sy !== 1;
     if (need) {
       ctx.save();
-      ctx.translate(s.x + offX, s.y + offY); // 以脚底为轴心
+      ctx.translate(sx0 + offX, sy0 + offY); // 以脚底为轴心
       ctx.rotate(rot);
       ctx.scale(sx, sy);
-      ctx.translate(-s.x, -s.y);
+      ctx.translate(-sx0, -sy0);
       this.drawSpriteBody(ctx, cam);
       ctx.restore();
     } else {
@@ -168,9 +172,9 @@ export class Entity {
   drawSpriteBody(ctx, cam) {
     const sprite = this.currentSprite();
     if (!sprite) return;
-    const s = cam.worldToScreen(this.x, this.sortY);
-    const dx = s.x - this.drawW / 2;
-    const dy = s.y - this.drawH;
+    const sx = cam.screenX(this.x), sy = cam.screenY(this.sortY);
+    const dx = sx - this.drawW / 2;
+    const dy = sy - this.drawH;
     const flash = this.hurtFlash > 0;
     if (flash) ctx.globalAlpha = 0.85;
     ctx.drawImage(sprite, dx, dy, this.drawW, this.drawH);

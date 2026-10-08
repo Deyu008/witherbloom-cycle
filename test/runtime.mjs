@@ -333,5 +333,30 @@ if (game) {
   check('七根者奖励不重复发放', state.shards === shardsBefore + 2);
 }
 
+console.log('\n=== 性能:对象池与零分配 ===');
+{
+  const { ProjectilePool } = await import(url('src/projectile.js'));
+  const pr1 = ProjectilePool.acquire(0, 0, { vx: 1 }, null);
+  ProjectilePool.release(pr1);
+  const pr2 = ProjectilePool.acquire(0, 0, {}, null);
+  check('Projectile 池复用同一对象', pr1 === pr2);
+  // 尾迹点复用:持续飞行时 tail + spare 总数不超过上限(不再无限造 {x,y})
+  const w3 = { entities: [], projectiles: [], loot: [], solidAtPx: () => false };
+  const pr3 = ProjectilePool.acquire(10, 10, { life: 5 }, w3);
+  for (let i = 0; i < 40; i++) pr3.update(0.021, null);
+  const pts = pr3.tail.length + pr3._tailSpare.length;
+  check('弹幕尾迹点总数恒定(≤9)', pts > 0 && pts <= 9, `pts=${pts}`);
+  ProjectilePool.release(pr3);
+  const { ParticleSystem } = await import(url('src/particles.js'));
+  const ps2 = new ParticleSystem();
+  ps2.emit({ x: 0, y: 0, life: 0.01 });
+  const freeBefore = ps2._free.length;
+  ps2.update(0.1);
+  check('粒子过期回空闲池', ps2._free.length === freeBefore + 1 && ps2.particles.length === 0);
+  const p0 = ps2._free[ps2._free.length - 1];
+  ps2.emit({ x: 1, y: 1, life: 1, color: '#123456' });
+  check('发射复用空闲粒子对象', ps2.particles[0] === p0 && ps2.particles[0].color === '#123456');
+}
+
 console.log(`\n=== Runtime: ${pass} passed, ${failN} failed ===`);
 process.exit(failN === 0 ? 0 : 1);

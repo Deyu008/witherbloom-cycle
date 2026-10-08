@@ -3,6 +3,8 @@ import { text, textWidth } from '../pixelfont.js';
 import { panel as uiPanel, bar as uiBar, slot as uiSlot, bossFrame as uiBossFrame, minimapFrame as uiMinimap } from '../uiKit.js';
 import { ECHOES } from '../data/echoes.js';
 import { World, Loot } from '../world.js';
+import { ProjectilePool } from '../projectile.js';
+import { drawGlow } from '../fxCache.js';
 import { Player } from '../player.js';
 import { Enemy } from '../enemy.js';
 import { Boss } from '../boss.js';
@@ -302,16 +304,11 @@ export class GameScene {
       l._settled = true;
       l.render = function(ctx, cam) {
         const s = cam.worldToScreen(this.x, this.y + Math.sin(this.bobT) * 3);
-        // 金紫双色光柱,比普通拾取物醒目得多
+        // 金紫双色光柱,比普通拾取物醒目得多(预烘焙,白热核 + 紫光晕)
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         const r = 16 + Math.sin(this.bobT * 2) * 3;
-        const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
-        grad.addColorStop(0, 'rgba(230,200,255,0.9)');
-        grad.addColorStop(0.5, 'rgba(183,140,224,0.5)');
-        grad.addColorStop(1, 'rgba(183,140,224,0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+        drawGlow(ctx, '#b78ce0', s.x, s.y, r * 2, 0.9, '#e6c8ff');
         ctx.restore();
         if (this.sprite) ctx.drawImage(this.sprite, s.x - this.sprite.width / 2, s.y - this.sprite.height / 2);
       };
@@ -668,9 +665,18 @@ export class GameScene {
     this.game.audio.sfxDash();
   }
   _updateHazards(dt) {
-    for (const h of this._hazards) h.t += dt;
-    const expired = this._hazards.filter(h => h.t >= h.dur);
-    this._hazards = this._hazards.filter(h => h.t < h.dur);
+    // 一趟推进 + 压缩(替代两次 filter);到期项先进复用数组再结算
+    const expired = this._hazExp || (this._hazExp = []);
+    expired.length = 0;
+    const hs = this._hazards;
+    let w = 0;
+    for (let i = 0; i < hs.length; i++) {
+      const h = hs[i];
+      h.t += dt;
+      if (h.t >= h.dur) expired.push(h);
+      else hs[w++] = h;
+    }
+    hs.length = w;
     for (const h of expired) {
       for (let i = 0; i < 16; i++) {
         const a = Math.random() * Math.PI * 2;
@@ -881,8 +887,16 @@ export class GameScene {
       }
     }
     // 尸体淡出计时
-    for (const c of this._corpses) c.t += dt;
-    this._corpses = this._corpses.filter(c => c.t < 0.55);
+    {
+      const cs = this._corpses;
+      let w = 0;
+      for (let i = 0; i < cs.length; i++) {
+        const c = cs[i];
+        c.t += dt;
+        if (c.t < 0.55) cs[w++] = c;
+      }
+      cs.length = w;
+    }
     // 拾取连收窗口 / 技能就绪闪光 / 开门残影
     if (this._pickupStreakT > 0) {
       this._pickupStreakT -= dt;
@@ -1015,16 +1029,33 @@ export class GameScene {
         this._onEnemyDeath(e); // 房间肃清 / 守护战结算
       }
     }
-    // 清理尸体(onKilled 已在同帧调用)
-    this.world.entities = this.world.entities.filter(e => e === this.player || e.alive);
+    // 清理尸体(onKilled 已在同帧调用;写指针压缩)
+    {
+      const es = this.world.entities;
+      let w = 0;
+      for (let i = 0; i < es.length; i++) {
+        const e = es[i];
+        if (e === this.player || e.alive) es[w++] = e;
+      }
+      es.length = w;
+    }
     if (this.chapterBoss && !this.chapterBoss.alive) {
       this.chapterBoss = null;
       this.currentObjective = this._getCurrentObjective();
     }
 
-    // 抛射物
+    // 抛射物(清理走写指针压缩 + 对象池回收,不再每帧 filter 重建数组)
     for (const p of this.world.projectiles) p.update(dt, this.game);
-    this.world.projectiles = this.world.projectiles.filter(p => !p.dead);
+    {
+      const ps = this.world.projectiles;
+      let w = 0;
+      for (let i = 0; i < ps.length; i++) {
+        const p = ps[i];
+        if (p.dead) ProjectilePool.release(p);
+        else ps[w++] = p;
+      }
+      ps.length = w;
+    }
 
     // 拾取物
     for (const l of this.world.loot) {
@@ -1041,7 +1072,15 @@ export class GameScene {
         if (!this.world.solidAtPx(l.x, ny)) l.y = ny;
       }
     }
-    this.world.loot = this.world.loot.filter(l => l.alive);
+    {
+      const ls = this.world.loot;
+      let w = 0;
+      for (let i = 0; i < ls.length; i++) {
+        const l = ls[i];
+        if (l.alive) ls[w++] = l;
+      }
+      ls.length = w;
+    }
 
     // NPC 交互
     this._nearbyNpc = null;
@@ -1432,11 +1471,11 @@ export class GameScene {
       ctx.globalCompositeOperation = 'lighter';
       const r = used ? 14 : 20 + Math.sin(t + sh.x) * 3;
       const a = used ? 0.12 : 0.3 + 0.12 * Math.sin(t * 2);
-      const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 1.6);
-      grad.addColorStop(0, `rgba(138,208,224,${a})`);
-      grad.addColorStop(1, 'rgba(138,208,224,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.ellipse(s.x, s.y, r * 1.6, r * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.scale(1, 0.5);
+      drawGlow(ctx, '#8ad0e0', 0, 0, r * 3.2, a);
+      ctx.restore();
       ctx.restore();
       ctx.fillStyle = used ? 'rgba(60,90,110,0.8)' : 'rgba(160,224,236,0.9)';
       ctx.beginPath(); ctx.ellipse(s.x, s.y, 14, 6, 0, 0, Math.PI * 2); ctx.fill();
@@ -1574,11 +1613,7 @@ export class GameScene {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       const a = 0.35 + 0.2 * Math.sin(this.t * 2);
-      const grad = ctx.createRadialGradient(s.x, s.y - 20, 0, s.x, s.y - 20, 22);
-      grad.addColorStop(0, `rgba(183,140,224,${a})`);
-      grad.addColorStop(1, 'rgba(183,140,224,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(s.x, s.y - 20, 22, 0, Math.PI * 2); ctx.fill();
+      drawGlow(ctx, '#b78ce0', s.x, s.y - 20, 44, a);
       ctx.restore();
     }
     if (!built && this._nearMemorial) {
@@ -1783,10 +1818,18 @@ export class GameScene {
     if (this.helpOpen) this._renderHelp(ctx);
     if (this.echoLogOpen) this._renderEchoLog(ctx);
 
-    // 底部操作条
-    ctx.fillStyle = 'rgba(8,6,14,0.7)';
-    ctx.fillRect(0, H - 26, W, 26);
-    text(ctx, 'WASD 移动  ·  J 攻击  ·  SPACE 闪避  ·  T 交谈  ·  M 静音  ·  ?帮助  ·  ESC 暂停', W / 2, H - 18, 'small', '#d6c8a4', { align: 'center' });
+    // 底部操作条(内容完全静态:离屏烘焙一次,每帧单次 blit)
+    if (!this._hudBarCv || this._hudBarW !== W) {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = 26;
+      const cx = c.getContext('2d');
+      cx.fillStyle = 'rgba(8,6,14,0.7)';
+      cx.fillRect(0, 0, W, 26);
+      text(cx, 'WASD 移动  ·  J 攻击  ·  SPACE 闪避  ·  T 交谈  ·  M 静音  ·  ?帮助  ·  ESC 暂停', W / 2, 8, 'small', '#d6c8a4', { align: 'center' });
+      this._hudBarCv = c;
+      this._hudBarW = W;
+    }
+    ctx.drawImage(this._hudBarCv, 0, H - 26);
 
     // 技能栏(冷却/法力消耗一目了然)
     this._renderSkillBar(ctx);

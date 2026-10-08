@@ -962,7 +962,7 @@ export class Loot {
       else this.x = nx;
       if (this.world?.solidAtPx(this.x, ny)) this.vy *= -0.4;
       else this.y = ny;
-      this.vy += 300 * dt; this.vx *= 0.9;
+      this.vy += 300 * dt; this.vx *= Math.exp(-(-Math.log(0.9) * 60) * dt);
       if (this.vy >= 0 && Math.abs(this.vx) < 2) this._settled = true;
     }
   }

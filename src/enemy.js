@@ -1,9 +1,10 @@
 // enemy.js — 普通敌人 AI(俯视角,中心坐标)
 import { Entity } from './entity.js';
 import { SPRITE_LIB } from './sprite.js';
-import { Projectile } from './projectile.js';
+import { Projectile, ProjectilePool } from './projectile.js';
 import { state } from './state.js';
 import { ENEMY_DATA, DROP_RATES, COMBAT } from './data/balance.js';
+import { drawGlow } from './fxCache.js';
 
 export class Enemy extends Entity {
   constructor(x, y, type, opts = {}) {
@@ -213,7 +214,7 @@ export class Enemy extends Entity {
       if (d <= this.attackRange * 1.15) { // 前摇期间玩家逃出射程则落空
         const dxr = this.target.x - this.x, dyr = this.target.y - this.y;
         const dd = Math.hypot(dxr, dyr) || 1;
-        const proj = new Projectile(this.x, this.y, {
+        const proj = ProjectilePool.acquire(this.x, this.y, {
           vx: (dxr / dd) * 200, vy: (dyr / dd) * 200,
           damage: this.dmg, team: 'enemy', life: 1.6,
           color: this.data.color, radius: 6, type: 'enemy',
@@ -334,11 +335,12 @@ export class Enemy extends Entity {
       ctx.globalCompositeOperation = 'lighter';
       const pulse = 0.5 + 0.22 * Math.sin(performance.now() * 0.005);
       const r = this.drawW * 0.62;
-      const grad = ctx.createRadialGradient(s0.x, s0.y, 0, s0.x, s0.y, r);
-      grad.addColorStop(0, `rgba(255,207,77,${0.3 * pulse})`);
-      grad.addColorStop(1, 'rgba(183,140,224,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.ellipse(s0.x, s0.y, r, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+      // 预烘焙金紫光球 + 椭圆压扁(原为每帧 createRadialGradient)
+      ctx.save();
+      ctx.translate(s0.x, s0.y);
+      ctx.scale(1, 0.5);
+      drawGlow(ctx, '#ffcf4d', 0, 0, r * 2, 0.3 * pulse, '#ffcf4d');
+      ctx.restore();
       ctx.restore();
     }
     if (!this.alive) return;
@@ -360,7 +362,8 @@ export class Enemy extends Entity {
       // 守御无敌:青色护罩弧
       if (this.affix === 'ward' && this.invulnerable > 0) {
         ctx.strokeStyle = 'rgba(122,200,232,0.8)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(cam.worldToScreen(this.x, this.y).x, cam.worldToScreen(this.x, this.y).y, this.drawW * 0.6, 0, Math.PI * 2); ctx.stroke();
+        const wx = cam.screenX(this.x), wy = cam.screenY(this.y);
+        ctx.beginPath(); ctx.arc(wx, wy, this.drawW * 0.6, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.restore();
     }
