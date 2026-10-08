@@ -139,18 +139,32 @@ for (const ch of [1, 2, 3, 4]) {
     if (!z.enemyTable.every(e => ENEMY_DATA[e])) tablesOk = false;
   }
   check(`ch${ch}: 三区域定义完整且怪物表有效`, (ZONES[ch]?.length === 3) && tablesOk);
-  // 支线房:至少 1 个,类型合法,关门状态下从起点可达
+  // 支线房:至少 1 个,类型合法;关门状态下从起点可达
+  // (回响封印锁住的宝藏房除外 —— 打开封印后可达)
   const sides = wz.sideRooms || [];
   const sideTypesOk = sides.every(r => ['trial', 'treasure', 'shrine'].includes(r.side));
-  const sidesReachable = sides.length > 0 && sides.every(r =>
+  const sealedKeys = new Set((wz.echoSealTiles || []).filter(x => !x.open).map(x => x.key));
+  const isSealed = (r) => (wz.echoSealTiles || []).some(x => !x.open && x.room === r);
+  const sidesReachable = sides.length > 0 && sides.every(r => isSealed(r) ||
     bfsReachable(wz, wz.spawnPoint, { x: r.cx * wz.tile, y: r.cy * wz.tile }, false));
-  check(`ch${ch}: 支线房 ≥1(共${sides.length})且类型合法且可达`, sides.length >= 1 && sideTypesOk && sidesReachable,
-    `sides=${sides.map(r => r.side).join(',')}`);
+  // 回响封印的房间在开启后必须可达(锁不是断路)
+  const sealsOpenOk = (wz.echoSealTiles || []).every(x => {
+    wz.openEchoSeal(x);
+    return bfsReachable(wz, wz.spawnPoint, { x: x.room.cx * wz.tile, y: x.room.cy * wz.tile }, false);
+  });
+  check(`ch${ch}: 支线房 ≥1(共${sides.length})且类型合法且可达`, sides.length >= 1 && sideTypesOk && sidesReachable && sealsOpenOk,
+    `sides=${sides.map(r => r.side).join(',')} sealed=${(wz.echoSealTiles || []).length}`);
+  check(`ch${ch}: 回响封印只锁雕刻的宝藏房`, (wz.echoSealTiles || []).every(x => x.room.side === 'treasure' && x.room._carved));
   // 房间区域归属:首列为 z0,末列为 z2
   const zoneOk = wz.rooms.every(r => r.zone === zoneOfCol(r.col));
   check(`ch${ch}: 房间区域归属与列一致`, zoneOk);
   // 全章伤害地形
   check(`ch${ch}: 危险地形有伤害(${wz.theme.hazardDmg})`, wz.theme.hazardDmg > 0 && wz.theme.hazard !== wz.theme.ground);
+}
+// 地形伤害逐章单调递增(8/12/16/20):与玩家成长曲线同轨
+{
+  const dmgs = [1, 2, 3, 4].map(ch => new World(ch, LEVELS[ch]).theme.hazardDmg);
+  check('四章地形伤害 8/12/16/20 单调递增', dmgs.join(',') === '8,12,16,20', dmgs.join(','));
 }
 
 // ===== 技能图鉴场景:实例化 + 导航 + 渲染不抛 =====

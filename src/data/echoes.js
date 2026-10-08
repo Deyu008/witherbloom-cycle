@@ -30,4 +30,5 @@ export const ECHOES = {
   root_hearth:   { chapter: 3, title: '根者 · 炉火', text: '守护村庄火塘的根者。第七位从不来火塘边——火光太亮,会照出他没被记得的脸。' },
   root_seventh:  { chapter: 3, title: '根者 · 无名', text: '倒悬学院最深处的无名残响。「第六次被路过,也比第一次被遗忘好。」' },
   seven_roots:   { chapter: 3, title: '七根者齐聚', text: '七段残响齐聚,倒悬学院的水钟同时敲响。回响者获得了根者们的认可——与两枚根者碎片。' },
+  memorial: { chapter: 3, title: '无名之碑', text: '你在墓园立了一块碑。碑上没有名字,只留了一个空位——留给那个被七个名字遗漏的人。风穿过碑林时,像是有什么停了一下。' },
 };

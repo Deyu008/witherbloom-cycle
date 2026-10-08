@@ -9,7 +9,7 @@ import { Boss } from '../boss.js';
 import { state } from '../state.js';
 import { CHAPTERS, LEVELS } from '../data/chapters.js';
 import { SPRITE_LIB } from '../sprite.js';
-import { COMBAT, SEAL_AMBUSH_COUNTS, SEAL_AMBUSH_REWARD, comboMultiplier } from '../data/balance.js';
+import { COMBAT, SEAL_AMBUSH_COUNTS, SEAL_AMBUSH_REWARD, comboMultiplier, ENEMY_DATA } from '../data/balance.js';
 import { BOON_POOL, BOON_RARITY_INFO } from '../data/boons.js';
 import { BoonPicker } from './boonPicker.js';
 import { SIDE_ROOMS } from '../data/zones.js';
@@ -36,6 +36,10 @@ function setA11y(patch) {
     return v;
   } catch (e) { return a11y(); }
 }
+
+// 三区强度表(authored,替代全图均匀的 want = 1 + chapter):
+// z0 起点侧低密度(教学/喘息)/ z1 中段标准 / z2 BOSS 侧高压
+const ZONE_INTENSITY = [0.5, 1, 1.4];
 
 // 暂停菜单的分总线音量项(←→ 步进,文本原地刷新)
 function volMenuItem(audio, bus, label) {
@@ -169,6 +173,17 @@ export class GameScene {
       }));
     // 支线房专属布置(试炼波次/宝藏守卫;静谧房无怪)
     this._spawnSideRooms();
+    // 地图静态拾取:走廊上的露珠/余烬"移动诱饵" + hazard 圈心的枯叶(风险回报)
+    this._spawnAmbientLoot();
+    // 回响封印(宝藏房):此前已开过的直接放行
+    for (const seal of this.world.echoSealTiles || []) {
+      if (state.flags[seal.key]) this.world.openEchoSeal(seal);
+    }
+    // 第三章专属:无名碑(释怀前置)+ 记忆石阵(符石拼图)
+    this._setupMemorial();
+    this._setupRunePuzzle();
+    // 死亡复活点:章首默认世界锚点;封印门开启后前移(见 update)
+    this._respawnPoint = null;
     // 章首发一枚祝福(开场对话结束后由 _tryOpenBoonOffer 弹出)
     this._queueBoon('common');
   }
@@ -312,8 +327,15 @@ export class GameScene {
     const SPAWN_RANGE = 300;
     // 区域怪物表:每个房间按所在区域(zone)取专属怪物组 —— 越深入,怪物组成越不同
     const tableOf = (room) => (this.world.zones?.[room.zone]?.enemyTable) || ENEMY_PRESETS[this.chapter];
-    const makeEnemy = (cx, cy, room, table,forceElite = false) => {
-      const list = table || tableOf(room);
+    // 遭遇组合规则:按 AI 类型拆远近池,≥3 只的房保底 1 远程 + 1 近战
+    // (纯随机可滚出 3 只同种近战,贴脸围殴无解;保底让每场遭遇有"解法")
+    const splitPools = (list) => {
+      const ranged = list.filter(t => ENEMY_DATA[t]?.ai === 'ranged');
+      const melee = list.filter(t => ENEMY_DATA[t]?.ai !== 'ranged');
+      return { ranged, melee };
+    };
+    const makeEnemy = (cx, cy, room, table, forceElite = false, prefer = null) => {
+      const list = prefer && prefer.length > 0 ? prefer : (table || tableOf(room));
       const type = list[Math.floor(rand() * list.length)];
       const elite = forceElite || rand() < COMBAT.eliteChance;
       const en = new Enemy(cx, cy, type, { id: `e_${idx}_${type}`, world: this.world, elite });
@@ -329,7 +351,9 @@ export class GameScene {
       room._enemyLeft = 0;
       room._cleared = false;
       room._wave2 = null;
-      const want = 1 + this.chapter; // 2-5 只/房,随章节微涨
+      // 区域强度查表:z0 减半 / z1 标准 / z2 ×1.4,钳制 1-6
+      const want = Math.max(1, Math.min(6, Math.round((1 + this.chapter) * (ZONE_INTENSITY[room.zone] ?? 1))));
+      const pools = splitPools(tableOf(room));
       const placed = [];
       let attempts = 0;
       while (placed.length < want && attempts < want * 15) {
@@ -345,7 +369,14 @@ export class GameScene {
       }
       if (placed.length === 0) continue;
       const split = want >= 4 ? Math.ceil(placed.length / 2) : placed.length;
-      for (let i = 0; i < split; i++) { makeEnemy(placed[i].x, placed[i].y, room); room._enemyLeft++; }
+      for (let i = 0; i < split; i++) {
+        // 组合保底:首只优先远程、次只优先近战(池子不支持时自然回退全表)
+        let prefer = null;
+        if (placed.length >= 3 && i === 0) prefer = pools.ranged;
+        else if (placed.length >= 3 && i === 1) prefer = pools.melee;
+        makeEnemy(placed[i].x, placed[i].y, room, null, false, prefer);
+        room._enemyLeft++;
+      }
       if (split < placed.length) {
         // 第二波:第一波清空后从房间深处"增援"
         room._wave2 = placed.slice(split);
@@ -405,6 +436,123 @@ export class GameScene {
         }
       }
     }
+  }
+
+  // ===== 地图静态拾取:设计稿"地图上散落露珠/余烬/枯叶"的落地 =====
+  // 走廊与房间里撒少量拾取(避开起点房中心与 BOSS 房);hazard 圈心必配枯叶 —— 想要就冒点险
+  _spawnAmbientLoot() {
+    const t = this.levelData.tile;
+    const rngState = { s: ((this.levelData.seed || 1) ^ 0xaba1) >>> 0 };
+    const rand = () => { rngState.s = (rngState.s * 1664525 + 1013904223) >>> 0; return (rngState.s & 0xffffff) / 0xffffff; };
+    const count = 8 + this.chapter * 2;
+    let placed = 0, tries = 0;
+    while (placed < count && tries < count * 25) {
+      tries++;
+      const tx = 2 + Math.floor(rand() * (this.world.w - 4));
+      const ty = 2 + Math.floor(rand() * (this.world.h - 4));
+      if (this.world.isSolid(tx, ty)) continue;
+      const x = tx * t + t / 2, y = ty * t + t / 2;
+      if (Math.hypot(x - this.world.spawnPoint.x, y - this.world.spawnPoint.y) < 220) continue;
+      if (this.world.roomAt(x, y) === this.world.bossRoom) continue;
+      const onHazard = this.world.isSpike(tx, ty);
+      const type = onHazard ? 'leaf' : (rand() < 0.6 ? 'dew' : 'ember');
+      const l = new Loot(x, y, type);
+      l.world = this.world;
+      l._settled = true; // 静态放置:不弹跳
+      l.life = 9999;
+      this.world.loot.push(l);
+      placed++;
+    }
+  }
+
+  // ===== 第三章:无名碑(释怀前置 —— 设计稿"为寂渊立无名碑")=====
+  _setupMemorial() {
+    this._memorial = null;
+    if (this.chapter !== 3) return;
+    const room = this.world.rooms.find(r => r.zone === 0 && r !== this.world.spawnRoom && !r.side)
+      || this.world.rooms.find(r => r !== this.world.spawnRoom && r !== this.world.bossRoom);
+    if (!room) return;
+    const t = this.levelData.tile;
+    this._memorial = {
+      x: (room.cx + 1.5) * t, y: (room.cy + 0.5) * t,
+      room, key: 'memorial_built',
+    };
+  }
+
+  // ===== 第三章:记忆石阵(符石拼图,设计稿"记忆拼图"简化版)=====
+  // 四块符石各刻一季;按石碑示出的季节顺序踏亮。踏错全灭重来,完成开宝库。
+  _setupRunePuzzle() {
+    this._runePuzzle = null;
+    if (this.chapter !== 3 || state.flags.rune_puzzle_done) return;
+    const rooms = this._roomsByDistance();
+    const sealedRooms = new Set((this.world.sealPoints || []).map(sp => sp.room));
+    const room = rooms.find(r => r.zone === 1 && !r.side && r !== this.world.spawnRoom
+      && r !== this.world.bossRoom && !sealedRooms.has(r));
+    if (!room) return;
+    const t = this.levelData.tile;
+    const SEASONS = ['春', '夏', '秋', '冬'];
+    // 石碑顺序:种子决定(春→冬→夏→秋 之类);符石本身按固定方位摆
+    const rngState = { s: ((this.levelData.seed || 1) ^ 0x5eae) >>> 0 };
+    const rand = () => { rngState.s = (rngState.s * 1664525 + 1013904223) >>> 0; return (rngState.s & 0xffffff) / 0xffffff; };
+    const order = [0, 1, 2, 3].sort(() => rand() - 0.5);
+    const offs = [[-2.5, 0], [2.5, 0], [0, -1.5], [0, 1.5]];
+    this._runePuzzle = {
+      room,
+      tablet: { x: room.cx * t + t / 2, y: room.cy * t + t / 2 },
+      stones: offs.map((o, i) => ({
+        x: (room.cx + 0.5 + o[0]) * t, y: (room.cy + 0.5 + o[1]) * t,
+        season: SEASONS[i], lit: false,
+      })),
+      order, // 踏亮顺序(符石索引)
+      next: 0,
+      t: 0,
+    };
+  }
+
+  // 记忆石阵逻辑:踏上未点亮的符石 → 顺序正确点亮 / 错误全灭重来;全亮开宝库
+  _updateRunePuzzle() {
+    const pz = this._runePuzzle;
+    pz.t += 0.016;
+    for (let i = 0; i < pz.stones.length; i++) {
+      const st = pz.stones[i];
+      if (st.lit) continue;
+      if (Math.hypot(this.player.x - st.x, this.player.y - st.y) > 26) continue;
+      if (pz.order[pz.next] === i) {
+        st.lit = true;
+        pz.next++;
+        this.game.audio.sfxPickup(520 + pz.next * 110);
+        for (let k = 0; k < 8; k++) {
+          const a = Math.random() * Math.PI * 2;
+          this.game.particles.emit({ x: st.x, y: st.y, vx: Math.cos(a) * 70, vy: Math.sin(a) * 70, life: 0.5, color: '#b78ce0', size: 4, type: 'circle', fade: true, additive: true });
+        }
+        if (pz.next >= pz.stones.length) this._completeRunePuzzle();
+      } else {
+        // 踏错:全部熄灭重来(错误音 + 轻震,不惩罚血量)
+        for (const st2 of pz.stones) st2.lit = false;
+        pz.next = 0;
+        this.game.audio.sfxClick();
+        this.game.camera.shake(3, 0.2);
+        this.game.spawnFloatText(st.x, st.y - 30, '回声散乱了…', '#c88a8a');
+      }
+      break; // 一帧只结算一块
+    }
+  }
+
+  _completeRunePuzzle() {
+    const pz = this._runePuzzle;
+    state.flags.rune_puzzle_done = true;
+    this.game.audio.sfxSecret();
+    this.game.audio.sfxChapter();
+    this.game.camera.shake(10, 0.6);
+    this.game.spawnLevelUpParticles(pz.tablet.x, pz.tablet.y);
+    this.game._banner = { text: '记忆石阵共鸣 · 宝库开启', color: '#b78ce0', life: 3.5 };
+    state.shards += 3;
+    this.game.spawnFloatText(this.player.x, this.player.y - 46, '+3 碎片', '#b78ce0');
+    for (const [dx, type] of [[-30, 'gold'], [0, 'gold'], [30, 'gold'], [60, 'shard']]) {
+      this.world.spawnLoot(pz.tablet.x + dx, pz.tablet.y + (Math.random() - 0.5) * 30, type);
+    }
+    this._queueBoon('rare'); // 石阵奖励:保底稀有的祝福三选一
+    this._runePuzzle = null;
   }
 
   // ===== 敌人死亡结算:尸体淡出 / 增援波 / 连杀 / 房间肃清 / 守护战 / 祝福触发 =====
@@ -492,9 +640,10 @@ export class GameScene {
       this.game._banner = { text: `宝库开启 · ${room.name}`, color: '#e0b76a', life: 3 };
       this.game.audio.sfxSecret();
       this.game.spawnLevelUpParticles(e.x, e.y);
-      for (const [dx, type] of [[-26, 'gold'], [0, 'gold'], [26, 'shard'], [52, 'leaf']]) {
+      for (const [dx, type] of [[-26, 'gold'], [0, 'gold'], [26, 'shard'], [52, 'shard'], [78, 'leaf']]) {
         this.world.spawnLoot(e.x + dx, e.y + (Math.random() - 0.5) * 30, type);
       }
+      this._queueBoon('common'); // 回响封印的入场费(2 碎片)换一枚祝福,净碎片不亏
       return;
     }
     // 普通房间肃清
@@ -638,6 +787,17 @@ export class GameScene {
     else if (stage >= 5) this._tutorialDone = true;
   }
 
+  // 释怀前置(设计稿双线条件):ch2 需先把摇篮曲交给女儿,ch3 需先立无名碑
+  _releaseGateInfo() {
+    if (this.chapter === 2 && !state.collected.lullaby) {
+      return { met: false, hint: '他还在等一首摇篮曲……(集齐刻印后,罗盘会指向秘密)' };
+    }
+    if (this.chapter === 3 && !state.flags.memorial_built) {
+      return { met: false, hint: '释怀之前,先去墓园为寂渊立一块无名碑(T 交互)' };
+    }
+    return { met: true, hint: '' };
+  }
+
   _startDialog(id, opts = {}) {
     this.dialogActive = true;
     this.dialogOpts = opts;
@@ -747,7 +907,13 @@ export class GameScene {
     // 用 _renderReleasePrompt 控制 HUD 闪烁提示。
     if (this.chapterBoss && this.chapterBoss.alive && this.chapterBoss.canRelease()) {
       this._renderReleasePrompt = true;
+      this._releaseGate = this._releaseGateInfo();
       if (this.game.input.justPressed('release')) {
+        if (!this._releaseGate.met) {
+          // 前置未满足:给线索,不消费释怀机会(也不打断本帧后续逻辑)
+          this.game.audio.sfxClick();
+          this.game.spawnFloatText(this.player.x, this.player.y - 56, this._releaseGate.hint, '#e0b76a', { px: 16, life: 2.2 });
+        } else {
         this.chapterBoss._releasePrompted = true; // 锁住,防止同帧重复派发
         const dialogId = (this.chapter === 1) ? 'forest_keeper_question'
           : (this.chapter === 2) ? 'burning_daughter_lullaby'
@@ -760,6 +926,7 @@ export class GameScene {
               this.chapterBoss.release(this.game);
             }
           }});
+        }
         }
       }
     } else {
@@ -810,6 +977,8 @@ export class GameScene {
           this.game.camera.shake(10, 0.5);
           this.game.spawnLevelUpParticles(this.player.x, this.player.y);
           this.game._banner = { text: '封印已开', color: this.world.gateColor, life: 2.5 };
+          // 复活点前移到门外:BOSS 战死亡不再横穿全图(死亡失祝福的代价保留)
+          this._respawnPoint = { x: this.player.x, y: this.player.y };
           this.currentObjective = this._getCurrentObjective();
           // 封印碎裂:每块门 tile 的光尘向门中心内吸
           const t2 = this.world.tile;
@@ -915,6 +1084,55 @@ export class GameScene {
       }
     }
 
+    // 回响封印(宝藏房):靠近按 T 花 2 碎片共鸣开启
+    this._nearEchoSeal = null;
+    for (const seal of this.world.echoSealTiles || []) {
+      if (seal.open) continue;
+      const near = seal.tiles.some(g =>
+        Math.abs((g.x + 0.5) * this.world.tile - this.player.x) < 74
+        && Math.abs((g.y + 0.5) * this.world.tile - this.player.y) < 74);
+      if (near) { this._nearEchoSeal = seal; break; }
+    }
+    if (this._nearEchoSeal && this.game.input.justPressed('interact')) {
+      const seal = this._nearEchoSeal;
+      if (state.shards >= 2) {
+        state.shards -= 2;
+        this.world.openEchoSeal(seal);
+        state.flags[seal.key] = true;
+        this.game.audio.sfxSecret();
+        this.game.camera.shake(8, 0.4);
+        this.game.spawnLevelUpParticles(this.player.x, this.player.y);
+        this.game._banner = { text: '回响共鸣 · 封印开启(-2 碎片)', color: '#b78ce0', life: 2.6 };
+      } else {
+        this.game.audio.sfxClick();
+        this.game.spawnFloatText(this.player.x, this.player.y - 44,
+          `回响封印 · 需 2 碎片共鸣(持有 ${state.shards})`, '#b78ce0', { px: 16, life: 1.4 });
+      }
+    }
+    // 无名碑(第三章释怀前置):靠近按 T 立碑
+    this._nearMemorial = null;
+    if (this._memorial && !state.flags[this._memorial.key]) {
+      const d = Math.hypot(this.player.x - this._memorial.x, this.player.y - this._memorial.y);
+      if (d < 46) this._nearMemorial = this._memorial;
+    }
+    if (this._nearMemorial && this.game.input.justPressed('interact')) {
+      state.flags[this._nearMemorial.key] = true;
+      this.game.audio.sfxRelease();
+      this.game.camera.shake(5, 0.5);
+      this.game._banner = { text: '无名之碑 · "给被遗忘的名字"', color: '#a8a0b8', life: 3.5 };
+      this.game.spawnFloatText(this.player.x, this.player.y - 40, '碑上没有名字,只有一个空位', '#d6c8a4', { px: 16, life: 2 });
+      if (!(state.echoes || []).includes('memorial')) state.echoes.push('memorial');
+      for (let i = 0; i < 12; i++) {
+        this.game.particles.emit({
+          x: this._nearMemorial.x, y: this._nearMemorial.y,
+          vx: (Math.random() - 0.5) * 40, vy: -30 - Math.random() * 50,
+          life: 1.2, color: '#b0a8c8', size: 3, type: 'circle', fade: true, additive: true,
+        });
+      }
+    }
+    // 记忆石阵(第三章符石拼图):踏上符石按石碑顺序点亮
+    if (this._runePuzzle) this._updateRunePuzzle();
+
     // 摄像机(朝移动方向轻微前探,画面先"看向"你要去的方向)
     // 前探向量归一化:量不随祝福加速漂移;停步瞬间目标不跳变(lead 单独缓动)
     const la = this.game.camera.lookAhead;
@@ -1017,7 +1235,7 @@ export class GameScene {
     this.game.spawnDeathParticles(this.player.x, this.player.y, '#b78ce0');
   }
   _respawn() {
-    const sp = this.world.spawnPoint;
+    const sp = this._respawnPoint || this.world.spawnPoint;
     this.player.x = sp.x; this.player.y = sp.y;
     this.player.vx = 0; this.player.vy = 0;
     this.player.hp = this.player.maxHp;
@@ -1226,6 +1444,20 @@ export class GameScene {
         this.game.particles.emit({ x: sh.x + (Math.random() - 0.5) * 16, y: sh.y, vx: 0, vy: -26, life: 0.8, color: '#bceaf4', size: 2, type: 'circle', fade: true, additive: true });
       }
     }
+    // 无名碑(第三章释怀前置)与记忆石阵(符石拼图)
+    if (this._memorial) this._renderMemorial(ctx, cam);
+    if (this._runePuzzle) this._renderRunePuzzle(ctx, cam);
+    // 回响封印交互提示(画在实体之上,带底板)
+    if (this._nearEchoSeal && !this._nearEchoSeal.open) {
+      const g0 = this._nearEchoSeal.tiles[0];
+      const s = cam.worldToScreen((g0.x + 0.5) * this.world.tile, g0.y * this.world.tile);
+      const afford = state.shards >= 2;
+      const tip = afford ? '按 T 共鸣 · 开启封印(-2 碎片)' : `回响封印 · 需 2 碎片(持有 ${state.shards})`;
+      const tw = textWidth(ctx, tip, 'small');
+      ctx.fillStyle = 'rgba(8,6,14,0.72)';
+      ctx.fillRect(s.x - tw / 2 - 7, s.y - 52, tw + 14, 21);
+      text(ctx, tip, s.x, s.y - 47, 'small', afford ? '#b78ce0' : '#8b7f5e', { align: 'center' });
+    }
     // 尸体(倒地摊平淡出,在所有活体之下)
     for (const c of this._corpses) {
       if (!cam.inView(c.x, c.y, 60)) continue;
@@ -1314,6 +1546,93 @@ export class GameScene {
       ctx.globalAlpha = 0.95;
       text(ctx, b.label, b.x, b.y - 11, 'small', '#f4ecd0', { align: 'center' });
       ctx.restore();
+    }
+  }
+
+  // 无名碑:灰石碑 + 刻痕;立过之后有烛光
+  _renderMemorial(ctx, cam) {
+    const m = this._memorial;
+    if (!cam.inView(m.x, m.y, 80)) return;
+    const s = cam.worldToScreen(m.x, m.y);
+    const built = !!state.flags[m.key];
+    ctx.save();
+    ctx.globalAlpha = 0.35; ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(s.x, s.y + 2, 16, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = built ? '#8a8494' : '#5a5664';
+    ctx.fillRect(s.x - 9, s.y - 34, 18, 34);
+    ctx.fillStyle = built ? '#a8a2b4' : '#6a6674';
+    ctx.fillRect(s.x - 9, s.y - 34, 18, 4);
+    // 刻痕(立碑前是一块空白的碑;立碑后多出一点微光)
+    ctx.strokeStyle = built ? '#c8c0d8' : '#4a4654';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(s.x - 4, s.y - 24); ctx.lineTo(s.x + 4, s.y - 24);
+    ctx.moveTo(s.x - 4, s.y - 17); ctx.lineTo(s.x + 2, s.y - 17);
+    ctx.stroke();
+    if (built) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const a = 0.35 + 0.2 * Math.sin(this.t * 2);
+      const grad = ctx.createRadialGradient(s.x, s.y - 20, 0, s.x, s.y - 20, 22);
+      grad.addColorStop(0, `rgba(183,140,224,${a})`);
+      grad.addColorStop(1, 'rgba(183,140,224,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(s.x, s.y - 20, 22, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    if (!built && this._nearMemorial) {
+      const tip = '按 T 立碑 · 给被遗忘的名字';
+      const tw = textWidth(ctx, tip, 'small');
+      ctx.fillStyle = 'rgba(8,6,14,0.72)';
+      ctx.fillRect(s.x - tw / 2 - 7, s.y - 62, tw + 14, 21);
+      text(ctx, tip, s.x, s.y - 57, 'small', '#d6c8a4', { align: 'center' });
+    }
+  }
+
+  // 记忆石阵:中央石碑示出季节顺序;四块符石按顺序踏亮
+  _renderRunePuzzle(ctx, cam) {
+    const pz = this._runePuzzle;
+    if (!cam.inView(pz.tablet.x, pz.tablet.y, 260)) return;
+    const t = this.world.tile;
+    // 中央石碑:刻着本次的"记忆顺序"
+    const ts = cam.worldToScreen(pz.tablet.x, pz.tablet.y);
+    ctx.fillStyle = '#4a4658';
+    ctx.fillRect(ts.x - 16, ts.y - 24, 32, 26);
+    ctx.fillStyle = '#66627a';
+    ctx.fillRect(ts.x - 16, ts.y - 24, 32, 4);
+    const orderStr = pz.order.map(i => pz.stones[i].season).join('→');
+    text(ctx, orderStr, ts.x, ts.y - 10, 16, '#e8dcff', { align: 'center', shadowColor: '#000', shadowOffset: { x: 1, y: 1 } });
+    // 四块符石
+    for (let i = 0; i < pz.stones.length; i++) {
+      const st = pz.stones[i];
+      const s = cam.worldToScreen(st.x, st.y);
+      ctx.save();
+      ctx.globalAlpha = 0.3; ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.ellipse(s.x, s.y + 6, 14, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = st.lit ? '#7a6a9a' : '#3e3a4c';
+      ctx.fillRect(s.x - 11, s.y - 10, 22, 16);
+      ctx.strokeStyle = st.lit ? '#b78ce0' : '#5a5668';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(s.x - 11, s.y - 10, 22, 16);
+      text(ctx, st.season, s.x, s.y - 2, 16, st.lit ? '#f0e8ff' : '#a89cb8', { align: 'center', shadowColor: '#000', shadowOffset: { x: 1, y: 1 } });
+      if (st.lit) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const a = 0.3 + 0.15 * Math.sin(this.t * 3 + i);
+        ctx.fillStyle = `rgba(183,140,224,${a})`;
+        ctx.beginPath(); ctx.arc(s.x, s.y - 2, 20, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+    // 房间内提示(靠近石碑时)
+    if (Math.hypot(this.player.x - pz.tablet.x, this.player.y - pz.tablet.y) < 120) {
+      const tip = pz.next === 0 ? '记忆石阵 · 按石碑顺序踏亮四季符石' : `踏亮中…(下一块 ${pz.stones[pz.order[pz.next]].season})`;
+      const tw = textWidth(ctx, tip, 'small');
+      ctx.fillStyle = 'rgba(8,6,14,0.72)';
+      ctx.fillRect(ts.x - tw / 2 - 7, ts.y + 14, tw + 14, 21);
+      text(ctx, tip, ts.x, ts.y + 19, 'small', '#b78ce0', { align: 'center' });
     }
   }
 
@@ -1818,7 +2137,13 @@ export class GameScene {
       const pulse = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(this.t * 4));
       ctx.save();
       ctx.globalAlpha = pulse;
-      text(ctx, '按 V 释怀', W / 2, by + barH + 28, 'medium', '#e0b76a', { align: 'center', shadowColor: '#000', shadowOffset: { x: 2, y: 2 } });
+      const gate = this._releaseGate || { met: true };
+      if (gate.met) {
+        text(ctx, '按 V 释怀', W / 2, by + barH + 28, 'medium', '#e0b76a', { align: 'center', shadowColor: '#000', shadowOffset: { x: 2, y: 2 } });
+      } else {
+        // 前置未满足:展示线索(按 V 还会再浮字提示)
+        text(ctx, gate.hint, W / 2, by + barH + 28, 'small', '#a9a07e', { align: 'center', shadowColor: '#000', shadowOffset: { x: 2, y: 2 } });
+      }
       ctx.restore();
     }
   }

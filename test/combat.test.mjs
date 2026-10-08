@@ -143,6 +143,16 @@ gs.player = p2;
 gs._breakComboFx(7);
 check('打断特效生成中断浮字', (game._floatTexts || []).some(f => String(f.text).includes('中断')));
 
+console.log('\n=== 章节伤害成长 ===');
+{
+  const w1 = { chapter: 1, entities: [], projectiles: [], loot: [] };
+  const w3 = { chapter: 3, entities: [], projectiles: [], loot: [] };
+  const e1 = new Enemy(0, 0, 'forge_knight', { world: w1 });
+  const e3 = new Enemy(0, 0, 'forge_knight', { world: w3 });
+  check('一章世界无伤害加成', e1.dmg === 18);
+  check('三章 +15%×2 章', e3.dmg === Math.round(18 * 1.3));
+}
+
 console.log('\n=== 音频:同曲守卫 / 切轨淡出排队 / 音量档位 ===');
 const { Audio: AudioEngine } = await import(url('src/audio.js'));
 const a = new AudioEngine();

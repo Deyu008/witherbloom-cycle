@@ -23,6 +23,10 @@ export class Enemy extends Entity {
     this.data = data;
     this.elite = elite;
     this.dmg = Math.round(data.dmg * (elite ? COMBAT.eliteDmgMul : 1));
+    // 章节伤害成长(+15%/章):玩家 maxHp 随升级+祝福接近翻倍,敌方伤害需同轨
+    // (跨章借调的怪也按所在章节结算 —— ch1 z2 的 ember_imp 仍是一章强度)
+    const chMul = 1 + (((opts.world && opts.world.chapter) || 1) - 1) * 0.15;
+    this.dmg = Math.round(this.dmg * chMul);
     this.speed = data.speed;
     this.aiType = data.ai;
     this.attackRange = data.range ?? 34;
@@ -275,8 +279,9 @@ export class Enemy extends Entity {
       state.level += 1;
       state.xpToNext = Math.floor(state.xpToNext * 1.5);
       state.maxHp += 10; state.maxMp += 5;
-      state.hp = state.maxHp;
-      if (game.current?.player) { game.current.player.maxHp = state.maxHp; game.current.player.hp = state.maxHp; }
+      // 升级回血改为 +50% 上限(不再全满):治疗压力交还给露珠/静谧泉/晨露经济
+      state.hp = Math.min(state.maxHp, state.hp + Math.round(state.maxHp * 0.5));
+      if (game.current?.player) { game.current.player.maxHp = state.maxHp; game.current.player.hp = Math.min(state.maxHp, game.current.player.hp + Math.round(state.maxHp * 0.5)); }
       game.audio.sfxChapter();
       // 升级庆典围绕玩家绽放(原版在敌人尸体上金光,出戏)
       const p = game.current?.player;

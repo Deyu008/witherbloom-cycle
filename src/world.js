@@ -15,11 +15,11 @@ export const TILE = {
 const CHAPTER_THEME = {
   1: { ground: TILE.CH1_GRASS, corridor: TILE.CH1_DIRT, wall: TILE.CH1_STONE, hazard: TILE.CH1_WATER, hazardDmg: 8,
        bgTop: '#243a3a', bgBot: '#13201d', accent: '#6fb872' },
-  2: { ground: TILE.CH2_EMBER, corridor: TILE.CH2_IRON, wall: TILE.CH2_BRICK, hazard: TILE.CH2_LAVA, hazardDmg: 14,
+  2: { ground: TILE.CH2_EMBER, corridor: TILE.CH2_IRON, wall: TILE.CH2_BRICK, hazard: TILE.CH2_LAVA, hazardDmg: 12,
        bgTop: '#3a2017', bgBot: '#1a0d09', accent: '#e87a3c' },
-  3: { ground: TILE.CH3_GRAVE, corridor: TILE.CH3_PATH, wall: TILE.CH3_STONE, hazard: TILE.CH3_BONE, hazardDmg: 10,
+  3: { ground: TILE.CH3_GRAVE, corridor: TILE.CH3_PATH, wall: TILE.CH3_STONE, hazard: TILE.CH3_BONE, hazardDmg: 16,
        bgTop: '#241a33', bgBot: '#120a1c', accent: '#a8643a' },
-  4: { ground: TILE.CH4_ICE, corridor: TILE.CH4_PATH, wall: TILE.CH4_MIRROR, hazard: TILE.CH4_VOID, hazardDmg: 12,
+  4: { ground: TILE.CH4_ICE, corridor: TILE.CH4_PATH, wall: TILE.CH4_MIRROR, hazard: TILE.CH4_VOID, hazardDmg: 20,
        bgTop: '#15263a', bgBot: '#08121e', accent: '#8aa9c4' },
 };
 
@@ -197,7 +197,8 @@ export class World {
         if (!grid[row][col]) emptyCells.push({ row, col });
       }
     }
-    const wantSides = Math.min(emptyCells.length, 1 + Math.floor(rand() * 2)); // 1-2 个支线房
+    // 2-3 个支线房(2/3 章内容量对齐 65 分钟时长目标)
+    const wantSides = Math.min(emptyCells.length, 2 + Math.floor(rand() * 2));
     for (let i = 0; i < wantSides; i++) {
       const cell = emptyCells[Math.floor(rand() * emptyCells.length)];
       if (!cell || grid[cell.row][cell.col]) continue;
@@ -218,6 +219,7 @@ export class World {
         col: cell.col, row: cell.row, zone: zoneOfCol(cell.col, cols),
         name: def.names[i % def.names.length],
         side: type, visited: false,
+        _carved: true, // 空格雕刻 = 单入口岔路(可安全上锁);兜底升级的主路房不可锁
       };
       grid[cell.row][cell.col] = room;
       this.rooms.push(room);
@@ -269,7 +271,39 @@ export class World {
     // 6) 连通性:真实 tile BFS + 修复(修复凿路绝不穿过封印门/BOSS 房)
     this._ensureConnectivity();
 
+    // 6b) 保底静谧房:全图没有任何 shrine 时,把 BOSS 侧(z2)最远的普通房升格 ——
+    // 高压区之前保证一处喘息,而非 64-80% 的章次一路战斗到 BOSS 门口
+    if (!this.sideRooms.some(r => r.side === 'shrine')) {
+      const cand = this.rooms
+        .filter(r => !r.side && r !== this.spawnRoom && r !== this.bossRoom && r.zone === 2)
+        .sort((a, b) => Math.hypot(b.cx - this.spawnRoom.cx, b.cy - this.spawnRoom.cy)
+                       - Math.hypot(a.cx - this.spawnRoom.cx, a.cy - this.spawnRoom.cy))[0];
+      if (cand) {
+        cand.side = 'shrine';
+        cand.name = SIDE_ROOMS.shrine.names[0];
+        this.sideRooms.push(cand);
+      }
+    }
+
+    // 6c) 回响封印:宝藏房入口上锁(2 碎片共鸣开启,宝库内藏额外祝福)——
+    // 全游戏除刻印计数门外新增第二种门控,碎片从纯技能树货币变成探索决策
+    this.echoSealTiles = [];
+    {
+      // 封印前的可达房间快照(校验用)
+      const seen0 = this._reachableTiles();
+      const before = this.rooms.filter(r => {
+        for (let y = r.y; y < r.y + r.h; y++) {
+          for (let x = r.x; x < r.x + r.w; x++) if (seen0[y * this.w + x]) return true;
+        }
+        return false;
+      });
+      for (const r of this.sideRooms) {
+        if (r.side === 'treasure' && r._carved) this._sealEchoGate(r, before);
+      }
+    }
+
     // 7) 回响刻印:只放在"关门状态下可达"的远处非 BOSS 房间(强制探索但不卡关)
+    // (在回响封印之后放置:被锁的宝藏房不可达,自然不会被选为刻印点,杜绝软锁)
     this._placeSeals();
 
     // 8) 章节特色 hazard(每章均有伤害:毒沼/熔岩/骨刺/裂冰):放在中间随机房间内部,
@@ -382,6 +416,49 @@ export class World {
         }
       }
     }
+  }
+
+  // 回响封印(宝藏房):把房间四边外侧的地板(走廊口)封为实体墙,登记为紫色封印。
+  // 封完做全图连通性校验:若有其他房间因此断路(别的支线走廊可能贴着宝藏房外墙走),
+  // 整体回退放弃上锁 —— 锁是奖励,绝不能变成断路
+  _sealEchoGate(room, reachableBefore) {
+    const w = this.w;
+    const inRoom = (x, y) => x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+    const tiles = [];
+    for (let y = room.y - 1; y <= room.y + room.h; y++) {
+      for (let x = room.x - 1; x <= room.x + room.w; x++) {
+        if (x < 1 || y < 1 || x >= this.w - 1 || y >= this.h - 1) continue;
+        if (inRoom(x, y) || this.solids[y * w + x]) continue;
+        const touches = inRoom(x + 1, y) || inRoom(x - 1, y) || inRoom(x, y + 1) || inRoom(x, y - 1);
+        if (touches) { this.solids[y * w + x] = 1; tiles.push({ x, y }); }
+      }
+    }
+    if (tiles.length === 0) return;
+    // 连通性校验:封印前可达的房间(宝藏房自身除外)必须仍然可达
+    const seen = this._reachableTiles();
+    for (const r of reachableBefore) {
+      if (r === room) continue;
+      let hit = false;
+      for (let y = r.y; y < r.y + r.h && !hit; y++) {
+        for (let x = r.x; x < r.x + r.w && !hit; x++) if (seen[y * w + x]) hit = true;
+      }
+      if (!hit) { // 断路:回退本次封印
+        for (const t of tiles) this.solids[t.y * w + t.x] = 0;
+        return;
+      }
+    }
+    this.echoSealTiles.push({
+      tiles, room,
+      key: `echoseal_${this.chapter}_${room.cx}_${room.cy}`,
+      open: false,
+    });
+  }
+
+  // 开启回响封印(碎片已扣,调用方负责);重绘小地图
+  openEchoSeal(seal) {
+    seal.open = true;
+    for (const t of seal.tiles) this.solids[t.y * this.w + t.x] = 0;
+    this._buildMinimap();
   }
 
   // 刻印布置:关门可达 ∪ 离起点最远 的房间(去重,最多取 sealCount 个)
@@ -531,6 +608,28 @@ export class World {
         ctx.globalAlpha = a * 0.9;
         ctx.fillStyle = '#fff';
         ctx.fillRect(sx + this.tile / 2 - 1, sy + 4, 2, this.tile - 8);
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+    // 回响封印(宝藏房入口):紫色脉动屏障,与金色 BOSS 门区分
+    if (this.echoSealTiles) {
+      const t2 = performance.now() * 0.004;
+      ctx.save();
+      for (const seal of this.echoSealTiles) {
+        if (seal.open) continue;
+        for (const g of seal.tiles) {
+          const sx = cam.screenX(g.x * this.tile);
+          const sy = cam.screenY(g.y * this.tile);
+          if (sx < -this.tile || sx > W || sy < -this.tile || sy > H) continue;
+          const a = 0.42 + 0.2 * Math.sin(t2 + g.x + g.y);
+          ctx.globalAlpha = a;
+          ctx.fillStyle = '#b78ce0';
+          ctx.fillRect(sx, sy, this.tile, this.tile);
+          ctx.globalAlpha = a * 0.85;
+          ctx.fillStyle = '#e8dcff';
+          ctx.fillRect(sx + this.tile / 2 - 1, sy + 3, 2, this.tile - 6);
+        }
       }
       ctx.restore();
       ctx.globalAlpha = 1;
